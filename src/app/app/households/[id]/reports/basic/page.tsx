@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getHouseholdForUser } from "@/lib/household";
-import { computeScores, computeCashFlow, computeAllocation } from "@/lib/analytics/engine";
+import { computeScores, computeCashFlow, computeAllocation, getAssumptionsSync } from "@/lib/analytics/engine";
 import { generateInsights, rankNextBestActions } from "@/lib/analytics/insights";
-import { CompassLogo } from "@/components/logo";
+import { CompassLogo, CompassMark } from "@/components/logo";
 import { PrintButton } from "@/components/print-button";
 import { formatCurrency } from "@/lib/utils";
 import { getRegion } from "@/lib/region";
@@ -21,6 +21,7 @@ export default async function BasicReport({ params }: { params: { id: string } }
   const nba = rankNextBestActions(insights);
   const region = h.region as "IN" | "GCC" | "GLOBAL";
   const regionPack = getRegion(h.region);
+  const a = getAssumptionsSync(bundle);
 
   return (
     <div className="space-y-6 print:space-y-4">
@@ -33,8 +34,8 @@ export default async function BasicReport({ params }: { params: { id: string } }
         <header className="flex items-start justify-between gap-6 border-b border-line-200 pb-5">
           <div>
             <div className="flex items-center gap-2 text-brand-deep">
-              <CompassLogo className="h-6 w-6" />
-              <span className="font-semibold">Valura Compass</span>
+              <CompassMark size={26} />
+              <span className="font-display text-lg"><span style={{ color: "#0F5132" }}>Valura</span><span style={{ color: "#334155" }}>.Ai</span> · Compass</span>
             </div>
             <h1 className="text-2xl font-semibold mt-3">{h.name}</h1>
             <p className="text-xs text-ink-500 mt-1">
@@ -77,28 +78,44 @@ export default async function BasicReport({ params }: { params: { id: string } }
         </section>
 
         <section className="mt-6 grid md:grid-cols-2 gap-6">
-          <div>
-            <p className="section-title">Top risks</p>
-            <ul className="mt-2 space-y-2 text-sm">
-              {insights.filter((i) => i.severity === "CRITICAL" || i.severity === "HIGH").slice(0, 3).map((i) => (
-                <li key={i.ruleId}><span className="font-medium">{i.title}</span><br /><span className="text-ink-500 text-xs">{i.body}</span></li>
-              ))}
-              {insights.filter((i) => i.severity === "CRITICAL" || i.severity === "HIGH").length === 0 ? (
-                <li className="text-ink-500">No critical or high risks surfaced at this data density.</li>
-              ) : null}
-            </ul>
-          </div>
-          <div>
-            <p className="section-title">Top opportunities</p>
-            <ul className="mt-2 space-y-2 text-sm">
-              {insights.filter((i) => i.severity === "MEDIUM" || i.category === "HIDDEN_OPPORTUNITY" || i.category === "TAX_OPPORTUNITY").slice(0, 3).map((i) => (
-                <li key={i.ruleId}><span className="font-medium">{i.title}</span><br /><span className="text-ink-500 text-xs">{i.body}</span></li>
-              ))}
-              {insights.filter((i) => i.severity === "MEDIUM" || i.category === "HIDDEN_OPPORTUNITY" || i.category === "TAX_OPPORTUNITY").length === 0 ? (
-                <li className="text-ink-500">More data will surface opportunities worth following.</li>
-              ) : null}
-            </ul>
-          </div>
+          {(() => {
+            const risks = insights.filter((i) => i.severity === "CRITICAL" || i.severity === "HIGH").slice(0, 3);
+            const riskIds = new Set(risks.map((r) => r.ruleId));
+            const opps = insights
+              .filter((i) => !riskIds.has(i.ruleId))
+              .filter((i) => i.severity === "MEDIUM" || i.category === "HIDDEN_OPPORTUNITY" || i.category === "TAX_OPPORTUNITY")
+              .slice(0, 3);
+            return (
+              <>
+                <div>
+                  <p className="section-title">Top risks</p>
+                  <ul className="mt-2 space-y-3 text-sm">
+                    {risks.map((i) => (
+                      <li key={i.ruleId}>
+                        <span className="font-medium">{i.title}</span>
+                        <p className="text-ink-500 text-xs mt-0.5">{i.body}</p>
+                        {i.lever ? <p className="text-brand-deep text-xs mt-1">Lever · {i.lever}</p> : null}
+                      </li>
+                    ))}
+                    {risks.length === 0 ? <li className="text-ink-500">No critical or high risks surfaced at this data density.</li> : null}
+                  </ul>
+                </div>
+                <div>
+                  <p className="section-title">Top opportunities</p>
+                  <ul className="mt-2 space-y-3 text-sm">
+                    {opps.map((i) => (
+                      <li key={i.ruleId}>
+                        <span className="font-medium">{i.title}</span>
+                        <p className="text-ink-500 text-xs mt-0.5">{i.body}</p>
+                        {i.lever ? <p className="text-brand-deep text-xs mt-1">Lever · {i.lever}</p> : null}
+                      </li>
+                    ))}
+                    {opps.length === 0 ? <li className="text-ink-500">More data will surface opportunities worth following.</li> : null}
+                  </ul>
+                </div>
+              </>
+            );
+          })()}
         </section>
 
         <section className="mt-6">
@@ -121,9 +138,18 @@ export default async function BasicReport({ params }: { params: { id: string } }
           </div>
         </section>
 
-        <footer className="mt-8 pt-4 border-t border-line-200 text-[11px] text-ink-500">
-          {regionPack.disclosures.general}<br />
-          Prepared by Valura Compass · Planning observation only. Not investment, tax, or legal advice.
+        <footer className="mt-8 pt-4 border-t border-line-200 text-[11px] text-ink-500 space-y-2">
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span className="uppercase tracking-wide font-medium">Assumptions</span>
+            <span>Inflation {(a.inflationGeneral * 100).toFixed(1)}%</span>
+            <span>Equity {(a.equityNominalReturn * 100).toFixed(1)}%</span>
+            <span>Debt {(a.debtNominalReturn * 100).toFixed(1)}%</span>
+            <span>Retire at {a.retirementAge}</span>
+            <span>Longevity {a.longevity}</span>
+          </div>
+          <div>
+            {regionPack.disclosures.general} Prepared by Valura.Ai · Compass. Planning observation only — not investment, tax, or legal advice.
+          </div>
         </footer>
       </article>
     </div>

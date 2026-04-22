@@ -9,7 +9,7 @@ export default function SignupPage({ searchParams }: { searchParams: { error?: s
       <div className="card w-full max-w-md">
         <div className="card-header flex items-center gap-3">
           <CompassLogo />
-          <div>
+          <div className="border-l border-line-200 pl-3">
             <p className="text-sm font-semibold">Create your account</p>
             <p className="text-xs text-ink-500">Sign up as an advisor or a self-serve client</p>
           </div>

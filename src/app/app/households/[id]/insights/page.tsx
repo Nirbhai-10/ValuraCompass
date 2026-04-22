@@ -26,11 +26,23 @@ export default async function InsightsPage({ params }: { params: { id: string } 
       </div>
 
       {insights.length === 0 ? (
-        <div className="card p-8 text-center text-sm text-ink-500">No insights yet — add more data to unlock targeted observations.</div>
+        <div className="card p-8 text-center text-sm text-ink-500">
+          No insights yet — add income, expenses, assets, liabilities, and policies so the engine has
+          something to reason about.
+        </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {insights.map((i) => (
-            <InsightCard key={i.ruleId} title={i.title} body={i.body} severity={i.severity} why={i.why}>
+            <InsightCard
+              key={i.ruleId}
+              title={i.title}
+              body={i.body}
+              severity={i.severity}
+              why={i.why}
+              numbers={i.numbers}
+              lever={i.lever}
+              affectedScores={i.affectedScores}
+            >
               {i.actions.map((a, idx) => (
                 a.type === "CREATE_TASK" ? (
                   <form key={idx} action={createTaskFromInsightAction}>

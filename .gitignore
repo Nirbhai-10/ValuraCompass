@@ -27,6 +27,9 @@ yarn-error.log*
 next-env.d.ts
 *.tsbuildinfo
 
+# Local scripts & working notes
+scripts/
+
 # Uploads (placeholder storage)
 public/uploads/*
 !public/uploads/.gitkeep

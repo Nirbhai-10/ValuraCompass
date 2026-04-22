@@ -5,7 +5,7 @@ import { computeScores, computeCashFlow, computeAllocation, projectGoals, monteC
 import { generateInsights } from "@/lib/analytics/insights";
 import { categorySuitability } from "@/lib/analytics/suitability";
 import { taxObservations } from "@/lib/analytics/tax";
-import { CompassLogo } from "@/components/logo";
+import { CompassMark } from "@/components/logo";
 import { PrintButton } from "@/components/print-button";
 import { formatCurrency } from "@/lib/utils";
 import { getRegion } from "@/lib/region";
@@ -38,8 +38,8 @@ export default async function FullReport({ params }: { params: { id: string } })
         <header className="flex items-start justify-between gap-6 border-b border-line-200 pb-5">
           <div>
             <div className="flex items-center gap-2 text-brand-deep">
-              <CompassLogo className="h-6 w-6" />
-              <span className="font-semibold">Valura Compass</span>
+              <CompassMark size={26} />
+              <span className="font-display text-lg"><span style={{ color: "#0F5132" }}>Valura</span><span style={{ color: "#334155" }}>.Ai</span> · Compass</span>
             </div>
             <h1 className="text-2xl font-semibold mt-3">{h.name} — Full plan</h1>
             <p className="text-xs text-ink-500 mt-1">

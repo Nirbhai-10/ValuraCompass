@@ -112,5 +112,12 @@ a { color: inherit; text-decoration: none; }
 
 @media print {
   .no-print { display: none !important; }
-  body { background: white; }
+  html, body { background: #FFFFFF !important; }
+  header, footer, nav { display: none !important; }
+  .card { box-shadow: none !important; border-color: #E2E8F0 !important; }
+  main { padding: 0 !important; }
+  .print-keep { display: block !important; }
+  @page {
+    margin: 14mm;
+  }
 }

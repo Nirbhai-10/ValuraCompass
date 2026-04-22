@@ -93,12 +93,14 @@ export function computeAllocation(h: HouseholdBundle): AllocationSnapshot {
   for (const a of h.assets) {
     byClass[a.assetClass] = (byClass[a.assetClass] || 0) + (a.currentValue || 0);
   }
-  const liquidClasses = ["CASH"];
+  // "Liquid" = genuinely accessible within ~1 week: cash + explicit T+0/T+2 buckets only.
+  // Illiquid retirement wrappers and long-lockup real estate never count as liquid here.
   const liquid = h.assets
-    .filter((a) => a.liquidityBucket === "T0" || a.liquidityBucket === "T2" || liquidClasses.includes(a.assetClass))
+    .filter((a) => (a.liquidityBucket === "T0" || a.liquidityBucket === "T2") && a.assetClass !== "RETIREMENT" && a.assetClass !== "REAL_ESTATE")
     .reduce((s, a) => s + a.currentValue, 0);
+  // 30-day accessible: cash + short-notice investments (excluding retirement wrappers & real estate).
   const liquid30d = h.assets
-    .filter((a) => ["T0", "T2", "D30"].includes(a.liquidityBucket))
+    .filter((a) => ["T0", "T2", "D30"].includes(a.liquidityBucket) && a.assetClass !== "RETIREMENT" && a.assetClass !== "REAL_ESTATE")
     .reduce((s, a) => s + a.currentValue, 0);
   const illiquid = h.assets
     .filter((a) => ["Y1", "ILLIQUID"].includes(a.liquidityBucket))
@@ -114,7 +116,21 @@ export function computeAllocation(h: HouseholdBundle): AllocationSnapshot {
 }
 
 function dependentsCount(h: HouseholdBundle): number {
-  return h.persons.filter((p) => p.isDependent).length;
+  // Anyone explicitly flagged as dependent OR a minor in the household
+  // (children have no income by default). Avoid double-counting.
+  const now = Date.now();
+  const minorIds = new Set(
+    h.persons
+      .filter((p) => {
+        if (!p.dob) return false;
+        const age = (now - new Date(p.dob).getTime()) / (365.25 * 864e5);
+        return age < 18;
+      })
+      .map((p) => p.id),
+  );
+  const flagged = new Set(h.persons.filter((p) => p.isDependent).map((p) => p.id));
+  for (const id of minorIds) flagged.add(id);
+  return flagged.size;
 }
 
 function primaryEarners(h: HouseholdBundle): Person[] {
@@ -370,57 +386,76 @@ export function computeScores(h: HouseholdBundle): ScoreSet {
     dc,
   );
 
-  // RRS — retirement readiness: corpus at retirement vs target
+  // RRS — retirement readiness: surplus is shared across *all* goals, not retirement alone.
+  // Treat retirement as one of N goals competing for the same monthly surplus.
   const primary = h.persons.find((p) => p.isPrimary) || h.persons[0];
   const currentAge = primary && primary.dob ? Math.max(18, Math.floor((Date.now() - new Date(primary.dob).getTime()) / (365.25 * 864e5))) : 35;
   const retireAge = primary?.intendedRetirementAge || a.retirementAge;
   const yearsToRetire = Math.max(1, retireAge - currentAge);
   const postRetireYears = Math.max(5, a.longevity - retireAge);
   const currentCorpus = alloc.byClass["RETIREMENT"] || 0;
+  const capacityShare = Math.max(0, cf.monthlySurplus) / Math.max(1, h.goals.length);
   const corpusAtRetire =
     currentCorpus * Math.pow(1 + nominalReturn, yearsToRetire) +
-    (cf.monthlySurplus > 0
-      ? ((cf.monthlySurplus * 12) *
-          (Math.pow(1 + nominalReturn, yearsToRetire) - 1)) /
-        nominalReturn
+    (capacityShare > 0
+      ? ((capacityShare * 12) * (Math.pow(1 + nominalReturn, yearsToRetire) - 1)) / nominalReturn
       : 0);
   const monthlyRetExpense = cf.essentialMonthlyExpenses * Math.pow(1 + a.inflationGeneral, yearsToRetire);
   const annualRetExpense = monthlyRetExpense * 12;
   const requiredCorpus =
     (annualRetExpense * (1 - Math.pow(1 / (1 + a.debtNominalReturn), postRetireYears))) /
     a.debtNominalReturn;
-  const rrsRaw = requiredCorpus > 0 ? clamp(corpusAtRetire / requiredCorpus, 0, 1.5) : 1;
-  const rrsValue = rrsRaw * 100;
+  const rrsRaw = requiredCorpus > 0 ? clamp(corpusAtRetire / requiredCorpus, 0, 1.3) : 1;
+  // Cap at 100 so overfunding doesn't bias the composite; narrative still conveys the uplift.
+  const rrsValue = Math.min(100, rrsRaw * 100);
   const RRS = makeScore(
     "RRS",
     "Retirement Readiness",
-    rrsValue > 100 ? 100 : rrsValue,
+    rrsValue,
     STANDARD_BANDS,
-    `At current pace, projected corpus covers about ${Math.round(rrsRaw * 100)}% of what's estimated.`,
-    [],
+    `Projected corpus covers about ${Math.round(rrsRaw * 100)}% of the modelled essentials at retirement (surplus shared across ${h.goals.length || 1} goal(s)).`,
+    [
+      { id: "corpus", label: "Projected / required", value: rrsRaw * 100, weight: 0.7 },
+      { id: "share", label: "Surplus share to retirement", value: h.goals.length ? (100 / h.goals.length) : 100, weight: 0.3 },
+    ],
     dc,
   );
 
-  // LAS — liquidity vs upcoming 12M outflows (approx)
-  const upcoming12M = (cf.essentialMonthlyExpenses + cf.totalEMI) * 12;
+  // LAS — liquidity vs upcoming 12M outflows (essentials + EMIs + discretionary).
+  const upcoming12M = (cf.essentialMonthlyExpenses + cf.totalEMI + cf.discretionaryMonthlyExpenses) * 12;
   const lasRatio = upcoming12M > 0 ? clamp(alloc.liquid30d / upcoming12M, 0, 1) : 1;
   const LAS = makeScore(
     "LAS",
     "Liquidity Adequacy",
     lasRatio * 100,
     STANDARD_BANDS,
-    `30-day liquid assets cover ~${(lasRatio * 100).toFixed(0)}% of the next 12 months of essentials + EMIs.`,
-    [],
+    `30-day accessible assets cover about ${(lasRatio * 100).toFixed(0)}% of the next 12 months of household outflows.`,
+    [
+      { id: "coverage", label: "12M coverage", value: lasRatio * 100, weight: 1 },
+    ],
     dc,
   );
 
-  // HFS — fragility aggregated
-  const earnerFragility = topEarnerShare > 0.8 ? 0.3 : topEarnerShare > 0.6 ? 0.6 : 0.9;
-  const caregiver = h.persons.some((p) => p.isCaregiver) ? 0.8 : 1;
-  const healthConc = h.persons.some((p) => p.specialNeedsFlag || p.elderlyFlag) ? 0.7 : 1;
-  const crossBorder = h.persons.some((p) => (p.residencyCountry && p.residencyCountry !== "IN") || (p.taxResidencyCountry && p.taxResidencyCountry !== "IN")) ? 0.85 : 1;
-  const liabGuarantees = h.liabilities.some((l) => l.type === "BUSINESS_LOAN") ? 0.8 : 1;
-  const hfsValue = (earnerFragility * 0.3 + caregiver * 0.15 + healthConc * 0.15 + crossBorder * 0.1 + liabGuarantees * 0.1 + ERS.value/100 * 0.2) * 100;
+  // HFS — fragility aggregated (higher = more resilient)
+  // Earner fragility: very high share = very fragile.
+  const earnerFragility =
+    topEarnerShare >= 0.8 ? 0.2 :
+    topEarnerShare >= 0.6 ? 0.55 :
+    topEarnerShare >= 0.4 ? 0.8 : 1;
+  const caregiver = h.persons.some((p) => p.isCaregiver) ? 0.75 : 1;
+  const healthConc = h.persons.some((p) => p.specialNeedsFlag) ? 0.5 : h.persons.some((p) => p.elderlyFlag) ? 0.7 : 1;
+  const crossBorder = h.persons.some((p) => (p.residencyCountry && p.residencyCountry !== h.region) || (p.taxResidencyCountry && p.taxResidencyCountry !== h.region)) ? 0.85 : 1;
+  const liabGuarantees = h.liabilities.some((l) => l.type === "BUSINESS_LOAN") ? 0.7 : 1;
+  const concentrationDrag = (alloc.concentrationTop?.share ?? 0) > 0.5 ? 0.7 : 1;
+  const hfsValue = (
+    earnerFragility * 0.28 +
+    caregiver * 0.12 +
+    healthConc * 0.15 +
+    crossBorder * 0.1 +
+    liabGuarantees * 0.1 +
+    concentrationDrag * 0.1 +
+    (ERS.value / 100) * 0.15
+  ) * 100;
   const HFS = makeScore(
     "HFS",
     "Household Fragility",
@@ -431,8 +466,16 @@ export function computeScores(h: HouseholdBundle): ScoreSet {
       [79, "Resilient"],
       [100, "Robust"],
     ],
-    `Aggregated fragility considering earner dependency, caregiver burden, and cross-border exposure.`,
-    [],
+    `Earner share ${(topEarnerShare * 100).toFixed(0)}% · ${h.persons.some((p) => p.elderlyFlag) ? "elderly dependents · " : ""}${(alloc.concentrationTop?.share ?? 0) > 0.5 ? "high asset concentration" : "diversified"}.`,
+    [
+      { id: "earner", label: "Earner dependency", value: earnerFragility * 100, weight: 0.28 },
+      { id: "caregiver", label: "Caregiver dependency", value: caregiver * 100, weight: 0.12 },
+      { id: "health", label: "Special-needs / elderly", value: healthConc * 100, weight: 0.15 },
+      { id: "xbord", label: "Cross-border exposure", value: crossBorder * 100, weight: 0.1 },
+      { id: "bizloan", label: "Business guarantees", value: liabGuarantees * 100, weight: 0.1 },
+      { id: "conc", label: "Asset concentration", value: concentrationDrag * 100, weight: 0.1 },
+      { id: "ers", label: "Emergency resilience", value: ERS.value, weight: 0.15 },
+    ],
     dc,
   );
 
@@ -493,13 +536,27 @@ export function computeScores(h: HouseholdBundle): ScoreSet {
     dc,
   );
 
-  // ISS — simple composite: RPS + horizon + liquidity + dependency
+  // ISS — composite signalling overall suitability posture.
   const avgHorizon = h.goals.length
     ? h.goals.reduce((s, g) => s + (g.targetYear - thisYear), 0) / h.goals.length
     : 10;
   const horizonScore = clamp(avgHorizon / 15, 0, 1) * 100;
-  const issValue = RPS.value * 0.3 + horizonScore * 0.25 + LAS.value * 0.15 + FDRS.value * 0.15 + (PAS.value / 100) * 15;
-  const ISS = makeScore("ISS", "Investment Suitability", issValue, STANDARD_BANDS, `Per-category suitability heatmap available in Advanced.`, [], dc);
+  const issValue = RPS.value * 0.3 + horizonScore * 0.25 + LAS.value * 0.15 + FDRS.value * 0.15 + (PAS.value) * 0.15;
+  const ISS = makeScore(
+    "ISS",
+    "Investment Suitability",
+    issValue,
+    STANDARD_BANDS,
+    `Risk ${RPS.band} · avg horizon ${avgHorizon.toFixed(0)}y · ${cf.monthlySurplus > 0 ? "positive" : "tight"} cash flow.`,
+    [
+      { id: "rps", label: "Risk fit", value: RPS.value, weight: 0.3 },
+      { id: "horizon", label: "Horizon fit", value: horizonScore, weight: 0.25 },
+      { id: "liq", label: "Liquidity fit", value: LAS.value, weight: 0.15 },
+      { id: "dep", label: "Dependency fit", value: FDRS.value, weight: 0.15 },
+      { id: "prot", label: "Protection fit", value: PAS.value, weight: 0.15 },
+    ],
+    dc,
+  );
 
   // DCS — document completeness
   const expected = ["ITR", "FORM16", "POLICY", "STATEMENT", "LOAN", "WILL"];
@@ -507,9 +564,23 @@ export function computeScores(h: HouseholdBundle): ScoreSet {
   const dcsValue = (expected.filter((e) => present.has(e)).length / expected.length) * 100;
   const DCS = makeScore("DCS", "Documentation Completeness", dcsValue, STANDARD_BANDS, `${expected.filter((e) => present.has(e)).length}/${expected.length} key document types present.`, [], dc);
 
-  // PCS — planning completeness (data density + scenarios + recs docs + tasks)
-  const pcsRaw = dc; // reuse data coverage as primary driver
-  const PCS = makeScore("PCS", "Planning Completeness", pcsRaw * 100, STANDARD_BANDS, `Based on data coverage across modules.`, [], dc);
+  // PCS — planning completeness (data density + scenarios + rec/task backing + estate + risk)
+  const presentBits = [
+    h.persons.length >= 2 ? 1 : 0,
+    h.incomes.length >= 1 ? 1 : 0,
+    h.expenses.length >= 3 ? 1 : 0,
+    h.assets.length >= 3 ? 1 : 0,
+    h.liabilities.length >= 1 || cf.totalEMI > 0 ? 1 : 0,
+    h.policies.some((p) => p.type === "TERM") ? 1 : 0,
+    h.policies.some((p) => p.type === "FAMILY_FLOATER" || p.type === "INDIVIDUAL_HEALTH") ? 1 : 0,
+    h.goals.length >= 1 ? 1 : 0,
+    h.riskProfile ? 1 : 0,
+    h.estateProfile?.willStatus && h.estateProfile.willStatus !== "NONE" ? 1 : 0,
+    h.taxProfile?.regime ? 1 : 0,
+    (h.documents ?? []).length >= 1 ? 1 : 0,
+  ];
+  const pcsRaw = presentBits.reduce((s, b) => s + b, 0) / presentBits.length;
+  const PCS = makeScore("PCS", "Planning Completeness", pcsRaw * 100, STANDARD_BANDS, `Key modules completed: ${presentBits.reduce((s, b) => s + b, 0)} / ${presentBits.length}.`, [], dc);
 
   // FTS — follow-through proxy from task completion
   const tasks = (h as any).tasks as { status: string }[] | undefined;
@@ -518,13 +589,25 @@ export function computeScores(h: HouseholdBundle): ScoreSet {
   const ftsRaw = openTasks + doneTasks > 0 ? doneTasks / (openTasks + doneTasks) : 0.5;
   const FTS = makeScore("FTS", "Follow-Through Probability", ftsRaw * 100, STANDARD_BANDS, `Inferred from completed vs open tasks.`, [], dc);
 
-  // AUI — used to prioritize NBA (not a user-facing quality score; surfaced internally)
+  // AUI — urgency index. HIGHER = more urgent.
+  // Use "reverse" bands so a high value shows as "Critical", not "Strong".
+  const AUI_BANDS: [number, string][] = [
+    [19, "Calm"],
+    [39, "Watch"],
+    [59, "Elevated"],
+    [79, "High"],
+    [100, "Critical"],
+  ];
   const auiValue = clamp(
-    (ERS.value < 50 ? 30 : 0) + (PAS.value < 50 ? 30 : 0) + (DSS.value < 50 ? 15 : 0) + (CFS.value < 50 ? 10 : 0) + (HFS.value < 50 ? 15 : 0),
+    (ERS.value < 50 ? 30 : ERS.value < 70 ? 10 : 0) +
+    (PAS.value < 50 ? 30 : PAS.value < 70 ? 15 : 0) +
+    (DSS.value < 50 ? 15 : DSS.value < 70 ? 7 : 0) +
+    (CFS.value < 50 ? 10 : 0) +
+    (HFS.value < 50 ? 15 : HFS.value < 70 ? 5 : 0),
     0,
     100,
   );
-  const AUI = makeScore("AUI", "Action Urgency Index", auiValue, STANDARD_BANDS, `Higher means more urgent items right now.`, [], dc);
+  const AUI = makeScore("AUI", "Action Urgency", auiValue, AUI_BANDS, `Higher means more urgent items right now.`, [], dc);
 
   // FHS — composite
   const fhsValue =

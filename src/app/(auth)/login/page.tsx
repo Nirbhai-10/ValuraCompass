@@ -10,8 +10,8 @@ export default function LoginPage({ searchParams }: { searchParams: { error?: st
       <div className="card w-full max-w-md">
         <div className="card-header flex items-center gap-3">
           <CompassLogo />
-          <div>
-            <p className="text-sm font-semibold">Valura Compass</p>
+          <div className="border-l border-line-200 pl-3">
+            <p className="text-sm font-semibold">Compass</p>
             <p className="text-xs text-ink-500">Sign in to your account</p>
           </div>
         </div>

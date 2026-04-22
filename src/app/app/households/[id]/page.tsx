@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getHouseholdForUser } from "@/lib/household";
-import { computeScores, computeCashFlow, computeAllocation, projectGoals } from "@/lib/analytics/engine";
+import { computeScores, computeCashFlow, computeAllocation, projectGoals, getAssumptionsSync } from "@/lib/analytics/engine";
 import { generateInsights, rankNextBestActions } from "@/lib/analytics/insights";
 import { ScoreCard } from "@/components/score-card";
 import { InsightCard } from "@/components/insight-card";
@@ -22,6 +22,7 @@ export default async function HouseholdOverview({ params }: { params: { id: stri
   const goalProjections = projectGoals(bundle);
   const insights = generateInsights(bundle, scores);
   const nba = rankNextBestActions(insights);
+  const a = getAssumptionsSync(bundle);
 
   const openTasks = await prisma.task.count({
     where: { householdId: h.id, status: { in: ["OPEN", "IN_PROGRESS"] } },
@@ -78,16 +79,41 @@ export default async function HouseholdOverview({ params }: { params: { id: stri
             <h2 className="font-semibold">Next best actions</h2>
             <Link href={`/app/households/${h.id}/tasks`} className="text-sm link">Action center →</Link>
           </div>
-          <div className="card-body space-y-3">
+          <div className="card-body space-y-4">
             {openTasks > 0 ? <p className="text-xs text-ink-500">{openTasks} open task{openTasks === 1 ? "" : "s"} in the action center.</p> : null}
-            {[...nba.advisor, ...nba.client].slice(0, 3).map((i, idx) => (
-              <div key={idx} className="border border-line-200 rounded-button p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium">{i.title}</p>
-                </div>
-                <p className="text-xs text-ink-500 mt-1 line-clamp-3">{i.body}</p>
+
+            {nba.client.length > 0 ? (
+              <div>
+                <p className="section-title mb-2">For the client</p>
+                <ul className="space-y-2">
+                  {nba.client.slice(0, 2).map((i) => (
+                    <li key={i.ruleId} className="border border-line-200 rounded-button p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium leading-snug">{i.title}</p>
+                      </div>
+                      {i.lever ? <p className="text-xs text-brand-deep mt-1.5">Lever · {i.lever}</p> : null}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            ))}
+            ) : null}
+
+            {nba.advisor.length > 0 ? (
+              <div>
+                <p className="section-title mb-2">For advisor / specialist</p>
+                <ul className="space-y-2">
+                  {nba.advisor.slice(0, 2).map((i) => (
+                    <li key={i.ruleId} className="border border-line-200 rounded-button p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium leading-snug">{i.title}</p>
+                      </div>
+                      {i.lever ? <p className="text-xs text-brand-deep mt-1.5">Lever · {i.lever}</p> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             {nba.advisor.length + nba.client.length === 0 ? (
               <p className="text-sm text-ink-500">No urgent actions right now. Keep the plan updated on life events and review next quarter.</p>
             ) : null}
@@ -122,7 +148,16 @@ export default async function HouseholdOverview({ params }: { params: { id: stri
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
             {insights.slice(0, 4).map((i) => (
-              <InsightCard key={i.ruleId} title={i.title} body={i.body} severity={i.severity} why={i.why} />
+              <InsightCard
+                key={i.ruleId}
+                title={i.title}
+                body={i.body}
+                severity={i.severity}
+                why={i.why}
+                numbers={i.numbers}
+                lever={i.lever}
+                affectedScores={i.affectedScores}
+              />
             ))}
           </div>
         )}
@@ -147,15 +182,30 @@ export default async function HouseholdOverview({ params }: { params: { id: stri
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                  <div><p className="text-xs text-ink-500">Target year</p><p className="font-medium tabular-nums">{g.targetYear}</p></div>
+                  <div><p className="text-xs text-ink-500">Target year</p><p className="font-medium tabular-nums">{g.targetYear} ({g.yearsToGoal}y)</p></div>
                   <div><p className="text-xs text-ink-500">Future cost</p><p className="font-medium tabular-nums">{formatCurrency(g.futureTarget, currency, region)}</p></div>
                   <div><p className="text-xs text-ink-500">Required SIP</p><p className="font-medium tabular-nums">{formatCurrency(g.monthlySIPRequired, currency, region)}/mo</p></div>
-                  <div><p className="text-xs text-ink-500">Capacity assumed</p><p className="font-medium tabular-nums">{formatCurrency(g.capacityAssumed, currency, region)}/mo</p></div>
+                  <div><p className="text-xs text-ink-500">Capacity share</p><p className="font-medium tabular-nums">{formatCurrency(g.capacityAssumed, currency, region)}/mo</p></div>
                 </div>
+                <div className="mt-3 h-1 bg-line-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-brand-deep" style={{ width: `${Math.max(4, Math.round(g.feasibility * 100))}%` }} />
+                </div>
+                <p className="text-[11px] text-ink-500 mt-1.5">Feasibility {Math.round(g.feasibility * 100)}% at current surplus share.</p>
               </div>
             ))}
           </div>
         )}
+      </div>
+
+      {/* Assumptions footer */}
+      <div className="card p-4 text-[11px] text-ink-500 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span className="uppercase tracking-wide text-ink-500 font-medium">Assumptions</span>
+        <span>Inflation {(a.inflationGeneral * 100).toFixed(1)}%</span>
+        <span>Equity {(a.equityNominalReturn * 100).toFixed(1)}%</span>
+        <span>Debt {(a.debtNominalReturn * 100).toFixed(1)}%</span>
+        <span>Retirement age {a.retirementAge}</span>
+        <span>Longevity {a.longevity}</span>
+        <Link className="link" href={`/app/households/${h.id}/assumptions`}>Edit →</Link>
       </div>
     </div>
   );

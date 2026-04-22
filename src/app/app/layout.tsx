@@ -16,13 +16,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="bg-white border-b border-line-200 no-print">
         <div className="mx-auto max-w-7xl px-6 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link href="/app" className="flex items-center gap-2">
+            <Link href="/app" className="flex items-center gap-3">
               <CompassLogo />
-              <span className="font-semibold">Valura Compass</span>
+              <span className="text-xs text-ink-500 border-l border-line-200 pl-3 hidden md:inline">
+                Compass · Planning intelligence
+              </span>
             </Link>
-            <span className="text-xs text-ink-500 border-l border-line-200 pl-3 hidden md:inline">
-              Planning intelligence
-            </span>
           </div>
           <div className="flex items-center gap-3">
             <Link href="/app" className="text-sm text-ink-700 hover:text-brand-deep">Dashboard</Link>
