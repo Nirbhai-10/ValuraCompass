@@ -1,0 +1,418 @@
+// Compass MVP schema — SQLite for dev; swap provider for prod (Postgres recommended).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Firm / tenant
+model Firm {
+  id          String        @id @default(cuid())
+  name        String
+  region      String        @default("IN") // IN | GCC | GLOBAL
+  createdAt   DateTime      @default(now())
+  users       User[]
+  households  Household[]
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String
+  name         String
+  role         String      // ADVISOR | CLIENT | COMPLIANCE | ADMIN
+  firmId       String?
+  firm         Firm?       @relation(fields: [firmId], references: [id])
+  createdAt    DateTime    @default(now())
+  memberships  HouseholdMembership[]
+  notes        AdvisorNote[]
+  auditEvents  AuditEvent[]
+}
+
+model Household {
+  id                String     @id @default(cuid())
+  name              String
+  region            String     @default("IN") // IN | GCC | GLOBAL
+  currency          String     @default("INR")
+  structure         String     @default("NUCLEAR") // NUCLEAR | NUCLEAR_WITH_PARENTS | JOINT | DINK | SINGLE | SINGLE_PARENT | MULTI_GEN | CROSS_BORDER
+  mode              String     @default("BASIC") // BASIC | ADVANCED
+  firmId            String?
+  firm              Firm?      @relation(fields: [firmId], references: [id])
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  members           HouseholdMembership[]
+  persons           Person[]
+  relationships     Relationship[]
+  incomes           Income[]
+  expenses          Expense[]
+  assets            Asset[]
+  liabilities       Liability[]
+  policies          Policy[]
+  goals             Goal[]
+  tasks             Task[]
+  documents         Document[]
+  scenarios         Scenario[]
+  notes             AdvisorNote[]
+  snapshots         ScoreSnapshot[]
+  insights          Insight[]
+  auditEvents       AuditEvent[]
+  assumptionOverride AssumptionOverride?
+  taxProfile        TaxProfile?
+  riskProfile       RiskProfile?
+  estateProfile     EstateProfile?
+  behaviorProfile   BehaviorProfile?
+}
+
+model HouseholdMembership {
+  id          String     @id @default(cuid())
+  householdId String
+  userId      String
+  household   Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope       String     @default("FULL") // FULL | READ_ONLY | LIMITED
+  createdAt   DateTime   @default(now())
+  @@unique([householdId, userId])
+}
+
+model Person {
+  id                   String     @id @default(cuid())
+  householdId          String
+  household            Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  fullName             String
+  preferredName        String?
+  dob                  DateTime?
+  gender               String?    // MALE | FEMALE | OTHER | UNSPECIFIED
+  maritalStatus        String?    // SINGLE | MARRIED | PARTNERED | DIVORCED | WIDOWED
+  employmentType       String?    // SALARIED | BUSINESS | PROFESSIONAL | RETIRED | STUDENT | OTHER
+  residencyCountry     String?    // ISO alpha-2
+  taxResidencyCountry  String?
+  citizenship          String?
+  isPrimary            Boolean    @default(false)
+  isDependent          Boolean    @default(false)
+  isCaregiver          Boolean    @default(false)
+  specialNeedsFlag     Boolean    @default(false)
+  elderlyFlag          Boolean    @default(false)
+  nriStatus            String?    // NONE | NRI | OCI | PIO
+  intendedRetirementAge Int?
+  riskAttitudeStated   String?    // CONSERVATIVE | MOD_CONSERVATIVE | BALANCED | GROWTH | AGGRESSIVE
+  planningConfidence   Int?       // 1..5
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  incomes              Income[]
+  goals                Goal[]
+  policiesInsured      PolicyInsured[]
+  nomineeOnAssets      AssetNominee[]
+  relationshipsFrom    Relationship[]  @relation("RelFrom")
+  relationshipsTo      Relationship[]  @relation("RelTo")
+}
+
+model Relationship {
+  id          String     @id @default(cuid())
+  householdId String
+  household   Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  fromId      String
+  toId        String
+  type        String     // SPOUSE | PARENT | CHILD | SIBLING | IN_LAW | PARTNER | GUARDIAN | CAREGIVER | WARD
+  dependency  String     @default("INDEPENDENT") // INDEPENDENT | PARTIAL_SUPPORT | FULL_SUPPORT | REVERSE_SUPPORT
+  financiallyLinked Boolean @default(false)
+  notes       String?
+  from        Person     @relation("RelFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to          Person     @relation("RelTo", fields: [toId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+}
+
+model Income {
+  id             String     @id @default(cuid())
+  householdId    String
+  personId       String
+  household      Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  person         Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
+  label          String
+  type           String     // SALARY | BUSINESS | CONSULTING | RENTAL | DIVIDENDS | INTEREST | PENSION | ANNUITY | RSU_VEST | FAMILY_SUPPORT_IN | VARIABLE | OTHER
+  amountMonthly  Float
+  currency       String     @default("INR")
+  variability    String     @default("STABLE") // STABLE | MODERATE | HIGH
+  stabilityYears Int?
+  notes          String?
+  createdAt      DateTime   @default(now())
+}
+
+model Expense {
+  id                  String     @id @default(cuid())
+  householdId         String
+  household           Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category            String     // HOUSING | UTILITIES | GROCERIES | TRANSPORT | INSURANCE_PREMIUMS | EDUCATION | HEALTHCARE | PARENTAL_SUPPORT | SPECIAL_NEEDS_CARE | STAFF | ENTERTAINMENT | DINING | TRAVEL | SUBSCRIPTIONS | DEBT_SERVICE | CHARITABLE | CHILDREN_COSTS | OTHER
+  label               String?
+  amountMonthly       Float
+  currency            String     @default("INR")
+  essential           Boolean    @default(true)
+  nonNegotiable       Boolean    @default(false)
+  inflationSensitivity String    @default("GENERAL") // GENERAL | HEALTHCARE | EDUCATION | CUSTOM
+  createdAt           DateTime   @default(now())
+}
+
+model Asset {
+  id             String     @id @default(cuid())
+  householdId    String
+  household      Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  label          String
+  assetClass     String     // CASH | EQUITY | DEBT | GOLD | REAL_ESTATE | RETIREMENT | INSURANCE_LINKED | BUSINESS | PRIVATE | INTERNATIONAL | COLLECTIBLE | OTHER
+  instrument     String?    // PPF | EPF | NPS | MF_EQUITY | MF_DEBT | SAVINGS | FD | STOCKS | ULIP | ENDOWMENT | PROPERTY | GOLD_PHY | GOLD_SGB | etc.
+  currentValue   Float
+  currency       String     @default("INR")
+  ownershipType  String     @default("SOLE") // SOLE | JOINT_SPOUSE | JOINT_OTHER | HUF | TRUST | ENTITY
+  liquidityBucket String    @default("30D")  // T0 | T2 | D30 | D90 | Y1 | ILLIQUID
+  nominees       AssetNominee[]
+  concentrationGroup String?
+  linkedGoalId   String?
+  linkedGoal     Goal?      @relation(fields: [linkedGoalId], references: [id])
+  notes          String?
+  createdAt      DateTime   @default(now())
+}
+
+model AssetNominee {
+  id        String    @id @default(cuid())
+  assetId   String
+  personId  String
+  asset     Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  person    Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+  share     Float     @default(100)
+  @@unique([assetId, personId])
+}
+
+model Liability {
+  id              String     @id @default(cuid())
+  householdId     String
+  household       Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  label           String
+  type            String     // HOME_LOAN | VEHICLE_LOAN | PERSONAL_LOAN | EDUCATION_LOAN | BUSINESS_LOAN | CREDIT_CARD | FAMILY_LOAN | INFORMAL | OTHER
+  lender          String?
+  outstanding     Float
+  interestRate    Float?
+  interestType    String?    // FIXED | FLOATING
+  tenureMonths    Int?
+  emiMonthly      Float?
+  currency        String     @default("INR")
+  collateralAsset String?
+  notes           String?
+  createdAt       DateTime   @default(now())
+}
+
+model Policy {
+  id              String     @id @default(cuid())
+  householdId     String
+  household       Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  label           String
+  type            String     // TERM | ULIP | ENDOWMENT | FAMILY_FLOATER | INDIVIDUAL_HEALTH | CRITICAL_ILLNESS | ACCIDENTAL | DISABILITY | HOME | VEHICLE | LIABILITY | KEYMAN | EMPLOYER_GROUP
+  insurer         String?
+  sumAssured      Float
+  premiumAnnual   Float?
+  currency        String     @default("INR")
+  startDate       DateTime?
+  maturityDate    DateTime?
+  policyTermYears Int?
+  riders          String?
+  notes           String?
+  insured         PolicyInsured[]
+  createdAt       DateTime   @default(now())
+}
+
+model PolicyInsured {
+  id        String   @id @default(cuid())
+  policyId  String
+  personId  String
+  role      String   // OWNER | INSURED | NOMINEE | BENEFICIARY
+  policy    Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  person    Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  @@unique([policyId, personId, role])
+}
+
+model Goal {
+  id                String     @id @default(cuid())
+  householdId       String
+  household         Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  type              String     // EMERGENCY | RETIREMENT | CHILD_EDUCATION | CHILD_MARRIAGE | HOME_PURCHASE | VEHICLE | TRAVEL | PARENTAL_SUPPORT | HEALTHCARE_RESERVE | PASSIVE_INCOME | LEGACY | BUSINESS_LAUNCH | DEBT_FREEDOM | CHARITABLE | OTHER
+  label             String
+  linkedPersonId    String?
+  linkedPerson      Person?    @relation(fields: [linkedPersonId], references: [id])
+  targetAmountToday Float
+  targetYear        Int
+  priority          Int        @default(3) // 1..5 (1 = highest)
+  emotionalWeight   Int        @default(3)
+  flexibility       String     @default("SOFT") // FIXED | SOFT | HIGHLY_FLEXIBLE
+  inflationCategory String     @default("GENERAL") // GENERAL | HEALTHCARE | EDUCATION | CUSTOM
+  currency          String     @default("INR")
+  status            String     @default("NOT_STARTED") // NOT_STARTED | ON_TRACK | AT_RISK | OFF_TRACK | ACHIEVED
+  notes             String?
+  linkedAssets      Asset[]
+  createdAt         DateTime   @default(now())
+}
+
+model Task {
+  id             String     @id @default(cuid())
+  householdId    String
+  household      Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  title          String
+  body           String?
+  type           String     // MISSING_DATA | MISSING_DOC | RECOMMENDATION | TAX_REVIEW | INSURANCE_REVIEW | DEBT_OPT | GOAL_FUND | ANNUAL_REVIEW | LIFE_EVENT | ESTATE | NOMINEE_FIX | RISK_REVIEW | SUITABILITY | REGION_UPDATE | ASSUMPTION_CONFIRM | SPECIALIST_REFERRAL | COMPLIANCE | MEETING_PREP | COMMUNICATION
+  ownerType      String     // ADVISOR | CLIENT | SPOUSE | SPECIALIST | COMPLIANCE
+  ownerUserId    String?
+  priority       String     @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW
+  status         String     @default("OPEN")    // OPEN | IN_PROGRESS | BLOCKED | DONE | CANCELLED | STALE
+  dueDate        DateTime?
+  relatedInsightId String?
+  evidenceRequirement String @default("NONE") // NONE | CONFIRMATION | FILE_UPLOAD | APPROVAL
+  completionNote String?
+  createdBy      String     @default("SYSTEM") // SYSTEM | USER
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model Document {
+  id             String     @id @default(cuid())
+  householdId    String
+  household      Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  filename       String
+  originalName   String
+  type           String     // STATEMENT | ITR | FORM16 | POLICY | LOAN | ID | WILL | OTHER
+  size           Int
+  mimeType       String?
+  uploadedByUserId String?
+  privacyClass   String     @default("SENSITIVE") // NORMAL | SENSITIVE | HIGHLY_SENSITIVE
+  storagePath    String
+  notes          String?
+  ocrStatus      String     @default("NOT_STARTED") // NOT_STARTED | PENDING | DONE | FAILED
+  ocrResult      String?    // JSON blob (placeholder)
+  createdAt      DateTime   @default(now())
+}
+
+model Scenario {
+  id             String     @id @default(cuid())
+  householdId    String
+  household      Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  overrides      String     // JSON
+  outputs        String?    // JSON
+  createdAt      DateTime   @default(now())
+}
+
+model AdvisorNote {
+  id             String     @id @default(cuid())
+  householdId    String
+  authorId       String
+  body           String
+  tags           String?
+  isInternal     Boolean    @default(true)
+  household      Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  author         User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  createdAt      DateTime   @default(now())
+}
+
+model ScoreSnapshot {
+  id             String     @id @default(cuid())
+  householdId    String
+  household      Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  scores         String     // JSON
+  createdAt      DateTime   @default(now())
+}
+
+model Insight {
+  id             String     @id @default(cuid())
+  householdId    String
+  household      Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  ruleId         String
+  category       String
+  severity       String     // CRITICAL | HIGH | MEDIUM | LOW | INFORMATIONAL
+  title          String
+  body           String
+  advisorBody    String?
+  why            String?
+  actions        String     // JSON[]
+  scoreDelta     Float?
+  status         String     @default("ACTIVE") // ACTIVE | SNOOZED | RESOLVED | DISMISSED
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+model AuditEvent {
+  id             String     @id @default(cuid())
+  householdId    String?
+  actorUserId    String?
+  kind           String     // AUTH | FIELD_WRITE | DOC_UPLOAD | SCORE_COMPUTE | INSIGHT | TASK | SUITABILITY | EXPORT | OTHER
+  objectType     String?
+  objectId       String?
+  action         String     // CREATE | UPDATE | DELETE | VIEW | RUN
+  before         String?
+  after          String?
+  reason         String?
+  createdAt      DateTime   @default(now())
+  household      Household? @relation(fields: [householdId], references: [id], onDelete: SetNull)
+  actor          User?      @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+}
+
+model AssumptionOverride {
+  id             String     @id @default(cuid())
+  householdId    String     @unique
+  household      Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  data           String     // JSON
+  updatedAt      DateTime   @updatedAt
+}
+
+model TaxProfile {
+  id                String     @id @default(cuid())
+  householdId       String     @unique
+  household         Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  regime            String?    // OLD | NEW | NA
+  businessIncomeShare Float?
+  complexityTags    String?    // JSON array
+  notes             String?
+  updatedAt         DateTime   @updatedAt
+}
+
+model RiskProfile {
+  id                String     @id @default(cuid())
+  householdId       String     @unique
+  household         Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  stated            String     // CONSERVATIVE | MOD_CONSERVATIVE | BALANCED | GROWTH | AGGRESSIVE
+  capacity          String?
+  need              String?
+  behavior          String?
+  rps               Float?
+  band              String?
+  answers           String?    // JSON
+  rationale         String?
+  updatedAt         DateTime   @updatedAt
+}
+
+model EstateProfile {
+  id                String     @id @default(cuid())
+  householdId       String     @unique
+  household         Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  willStatus        String?    // NONE | DRAFT | REGISTERED | UPDATED | OUTDATED
+  trustStatus       String?
+  poaStatus         String?
+  guardianshipNotes String?
+  legacyIntentNotes String?
+  updatedAt         DateTime   @updatedAt
+}
+
+model BehaviorProfile {
+  id                String     @id @default(cuid())
+  householdId       String     @unique
+  household         Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  savingsDiscipline Int?
+  impulsiveSpend    Int?
+  panicSelling      Int?
+  procrastination   Int?
+  complexityAvoid   Int?
+  needReassurance   Int?
+  nudgingPref       String?    // GENTLE | DIRECT | DATA | NARRATIVE
+  updatedAt         DateTime   @updatedAt
+}
