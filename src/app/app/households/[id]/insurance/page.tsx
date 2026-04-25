@@ -1,102 +1,142 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
-import { getHouseholdForUser } from "@/lib/household";
-import { createPolicyAction, deletePolicyAction } from "./actions";
-import { formatCurrency } from "@/lib/utils";
+"use client";
 
-const TYPES = [
-  "TERM", "ULIP", "ENDOWMENT", "FAMILY_FLOATER", "INDIVIDUAL_HEALTH", "CRITICAL_ILLNESS",
-  "ACCIDENTAL", "DISABILITY", "HOME", "VEHICLE", "LIABILITY", "KEYMAN", "EMPLOYER_GROUP",
-];
+import { FormEvent, useState } from "react";
+import { useParams } from "next/navigation";
+import { useDatabase, useUpdate, uid } from "@/lib/store";
+import { formatMoney, parseAmount } from "@/lib/format";
+import { POLICY_TYPES } from "@/lib/types";
 
-export default async function InsurancePage({ params }: { params: { id: string } }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const h = await getHouseholdForUser(session.userId, params.id);
-  if (!h) redirect("/app");
-  const region = h.region as "IN" | "GCC" | "GLOBAL";
+export default function InsurancePage() {
+  const params = useParams<{ id: string }>();
+  const householdId = params?.id ?? "";
+  const db = useDatabase();
+  const update = useUpdate();
+  const household = db.households.find((h) => h.id === householdId);
+  const policies = db.policies.filter((p) => p.householdId === householdId);
+  const [open, setOpen] = useState(false);
 
-  const totalSA = h.policies.reduce((s, p) => s + p.sumAssured, 0);
-  const totalPremium = h.policies.reduce((s, p) => s + (p.premiumAnnual ?? 0), 0);
+  if (!household) return null;
+  const fmt = (n: number) => formatMoney(n, household.currency, household.region);
+  const totalCover = policies.reduce((s, p) => s + p.sumAssured, 0);
+  const totalPremium = policies.reduce((s, p) => s + (p.premiumAnnual ?? 0), 0);
+
+  function handleAdd(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const label = String(fd.get("label") ?? "").trim();
+    const type = String(fd.get("type") ?? "Term life");
+    const insurer = String(fd.get("insurer") ?? "").trim();
+    const sumAssured = parseAmount(String(fd.get("sumAssured") ?? ""));
+    const premium = parseAmount(String(fd.get("premium") ?? ""));
+    if (!label || sumAssured <= 0) return;
+
+    update((curr) => ({
+      ...curr,
+      policies: [
+        ...curr.policies,
+        {
+          id: uid("pol"),
+          householdId,
+          label,
+          type,
+          insurer: insurer || undefined,
+          sumAssured,
+          premiumAnnual: premium > 0 ? premium : undefined,
+        },
+      ],
+    }));
+    form.reset();
+    setOpen(false);
+  }
+
+  function handleRemove(id: string) {
+    update((curr) => ({
+      ...curr,
+      policies: curr.policies.filter((p) => p.id !== id),
+    }));
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="kpi"><p className="kpi-title">Total sum assured</p><p className="kpi-value">{formatCurrency(totalSA, h.currency, region)}</p></div>
-        <div className="kpi"><p className="kpi-title">Total annual premium</p><p className="kpi-value">{formatCurrency(totalPremium, h.currency, region)}</p></div>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Insurance</h2>
+          <p className="text-sm text-ink-500 mt-1">
+            Total cover: <span className="font-semibold tabular-nums">{fmt(totalCover)}</span>
+            {totalPremium > 0 ? <> · Annual premium <span className="font-semibold tabular-nums">{fmt(totalPremium)}</span></> : null}
+          </p>
+        </div>
+        {!open ? (
+          <button onClick={() => setOpen(true)} className="btn-primary text-sm">
+            Add policy
+          </button>
+        ) : null}
       </div>
 
-      <div className="card">
-        <div className="card-header flex items-center justify-between">
-          <h2 className="font-semibold">Policies</h2>
-          <span className="text-xs text-ink-500">{h.policies.length} policy/policies</span>
-        </div>
-        <div className="card-body">
-          {h.policies.length === 0 ? (
-            <p className="text-sm text-ink-500">No policies captured.</p>
-          ) : (
-            <table className="w-full table">
-              <thead>
-                <tr><th>Label</th><th>Type</th><th>Insurer</th><th className="text-right">Sum assured</th><th className="text-right">Premium/yr</th><th></th></tr>
-              </thead>
-              <tbody>
-                {h.policies.map((p) => (
-                  <tr key={p.id}>
-                    <td className="font-medium">{p.label}</td>
-                    <td className="text-ink-500">{p.type.replace(/_/g, " ")}</td>
-                    <td className="text-ink-500">{p.insurer ?? "—"}</td>
-                    <td className="text-right tabular-nums">{formatCurrency(p.sumAssured, p.currency ?? h.currency, region)}</td>
-                    <td className="text-right tabular-nums">{formatCurrency(p.premiumAnnual ?? 0, p.currency ?? h.currency, region)}</td>
-                    <td className="text-right">
-                      <form action={deletePolicyAction}>
-                        <input type="hidden" name="householdId" value={h.id} />
-                        <input type="hidden" name="id" value={p.id} />
-                        <button className="btn-ghost text-xs">Remove</button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-header"><h2 className="font-semibold">Add policy</h2></div>
-        <form action={createPolicyAction} className="card-body grid gap-3 md:grid-cols-2">
-          <input type="hidden" name="householdId" value={h.id} />
+      {open ? (
+        <form onSubmit={handleAdd} className="card card-pad grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label">Label</label>
-            <input className="input" name="label" required />
+            <input className="input" name="label" required placeholder="e.g. LIC term plan" autoFocus />
           </div>
           <div>
             <label className="label">Type</label>
-            <select name="type" className="input" defaultValue="TERM">
-              {TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
+            <select className="input" name="type" defaultValue="Term life">
+              {POLICY_TYPES.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="label">Insurer</label>
-            <input className="input" name="insurer" />
+            <label className="label">Insurer (optional)</label>
+            <input className="input" name="insurer" placeholder="e.g. LIC, HDFC Life" />
           </div>
           <div>
-            <label className="label">Sum assured ({h.currency})</label>
-            <input className="input tabular-nums" name="sumAssured" type="number" required min="0" step="1" />
+            <label className="label">Sum assured ({household.currency})</label>
+            <input className="input" name="sumAssured" inputMode="decimal" required placeholder="0" />
           </div>
           <div>
-            <label className="label">Annual premium ({h.currency})</label>
-            <input className="input tabular-nums" name="premiumAnnual" type="number" min="0" step="1" />
+            <label className="label">Annual premium (optional)</label>
+            <input className="input" name="premium" inputMode="decimal" placeholder="0" />
           </div>
-          <div>
-            <label className="label">Policy term (years)</label>
-            <input className="input tabular-nums" name="policyTermYears" type="number" min="0" />
-          </div>
-          <div className="md:col-span-2">
-            <button className="btn-primary">Add policy</button>
+          <div className="sm:col-span-2 flex gap-2">
+            <button className="btn-primary text-sm" type="submit">
+              Save policy
+            </button>
+            <button type="button" className="btn-ghost text-sm" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
           </div>
         </form>
-      </div>
+      ) : null}
+
+      {policies.length === 0 ? (
+        <div className="card card-pad text-center text-sm text-ink-500">
+          No policies added yet.
+        </div>
+      ) : (
+        <ul className="card divide-y divide-line-100">
+          {policies.map((p) => (
+            <li key={p.id} className="px-5 py-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{p.label}</p>
+                <p className="text-xs text-ink-500 mt-0.5">
+                  {p.type}
+                  {p.insurer ? ` · ${p.insurer}` : ""}
+                  {p.premiumAnnual ? ` · ${fmt(p.premiumAnnual)} / yr` : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <p className="text-sm font-semibold tabular-nums">{fmt(p.sumAssured)}</p>
+                <button onClick={() => handleRemove(p.id)} className="btn-danger text-xs">
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

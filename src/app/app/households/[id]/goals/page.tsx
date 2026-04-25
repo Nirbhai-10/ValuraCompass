@@ -1,131 +1,168 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
-import { getHouseholdForUser } from "@/lib/household";
-import { createGoalAction, deleteGoalAction } from "./actions";
-import { formatCurrency } from "@/lib/utils";
-import { projectGoals } from "@/lib/analytics/engine";
+"use client";
 
-const TYPES = [
-  "EMERGENCY", "RETIREMENT", "CHILD_EDUCATION", "CHILD_MARRIAGE", "HOME_PURCHASE", "VEHICLE",
-  "TRAVEL", "PARENTAL_SUPPORT", "HEALTHCARE_RESERVE", "PASSIVE_INCOME", "LEGACY",
-  "BUSINESS_LAUNCH", "DEBT_FREEDOM", "CHARITABLE", "OTHER",
+import { FormEvent, useState } from "react";
+import { useParams } from "next/navigation";
+import { useDatabase, useUpdate, uid } from "@/lib/store";
+import { formatMoney, parseAmount } from "@/lib/format";
+import { GOAL_TYPES } from "@/lib/types";
+
+const PRIORITIES = [
+  { value: 1, label: "Highest" },
+  { value: 2, label: "High" },
+  { value: 3, label: "Medium" },
+  { value: 4, label: "Low" },
+  { value: 5, label: "Lowest" },
 ];
 
-export default async function GoalsPage({ params }: { params: { id: string } }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const h = await getHouseholdForUser(session.userId, params.id);
-  if (!h) redirect("/app");
-  const region = h.region as "IN" | "GCC" | "GLOBAL";
+export default function GoalsPage() {
+  const params = useParams<{ id: string }>();
+  const householdId = params?.id ?? "";
+  const db = useDatabase();
+  const update = useUpdate();
+  const household = db.households.find((h) => h.id === householdId);
+  const goals = db.goals.filter((g) => g.householdId === householdId);
+  const [open, setOpen] = useState(false);
 
-  const projections = projectGoals(h as any);
+  if (!household) return null;
+  const fmt = (n: number) => formatMoney(n, household.currency, household.region);
+  const total = goals.reduce((s, g) => s + g.targetAmount, 0);
+  const currentYear = new Date().getFullYear();
+
+  function handleAdd(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const label = String(fd.get("label") ?? "").trim();
+    const type = String(fd.get("type") ?? "Other");
+    const targetAmount = parseAmount(String(fd.get("targetAmount") ?? ""));
+    const targetYear = Number(String(fd.get("targetYear") ?? "")) || currentYear + 5;
+    const priority = Number(String(fd.get("priority") ?? "3")) || 3;
+    if (!label || targetAmount <= 0) return;
+
+    update((curr) => ({
+      ...curr,
+      goals: [
+        ...curr.goals,
+        {
+          id: uid("goal"),
+          householdId,
+          label,
+          type,
+          targetAmount,
+          targetYear,
+          priority,
+        },
+      ],
+    }));
+    form.reset();
+    setOpen(false);
+  }
+
+  function handleRemove(id: string) {
+    update((curr) => ({
+      ...curr,
+      goals: curr.goals.filter((g) => g.id !== id),
+    }));
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="card">
-        <div className="card-header flex items-center justify-between">
-          <h2 className="font-semibold">Goals</h2>
-          <span className="text-xs text-ink-500">{h.goals.length} goal(s)</span>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Goals</h2>
+          <p className="text-sm text-ink-500 mt-1">
+            Total target: <span className="font-semibold tabular-nums">{fmt(total)}</span>
+          </p>
         </div>
-        <div className="card-body">
-          {h.goals.length === 0 ? (
-            <p className="text-sm text-ink-500">No goals yet. Add one below.</p>
-          ) : (
-            <table className="w-full table">
-              <thead>
-                <tr>
-                  <th>Label</th><th>Type</th><th>Priority</th><th>Horizon</th>
-                  <th className="text-right">Today</th><th className="text-right">Future</th>
-                  <th className="text-right">Required SIP</th><th>Status</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {h.goals.map((g) => {
-                  const proj = projections.find((p) => p.goalId === g.id);
-                  return (
-                    <tr key={g.id}>
-                      <td className="font-medium">{g.label}</td>
-                      <td className="text-ink-500">{g.type.replace(/_/g, " ")}</td>
-                      <td>{g.priority}</td>
-                      <td className="text-ink-500">{proj?.yearsToGoal} yrs</td>
-                      <td className="text-right tabular-nums">{formatCurrency(g.targetAmountToday, g.currency ?? h.currency, region)}</td>
-                      <td className="text-right tabular-nums">{proj ? formatCurrency(proj.futureTarget, g.currency ?? h.currency, region) : "—"}</td>
-                      <td className="text-right tabular-nums">{proj ? formatCurrency(proj.monthlySIPRequired, g.currency ?? h.currency, region) : "—"}</td>
-                      <td>
-                        {proj?.onTrack ? <span className="chip-positive">On track</span>
-                          : (proj?.feasibility ?? 0) >= 0.6 ? <span className="chip-low">Watch</span>
-                          : <span className="chip-warn">At risk</span>}
-                      </td>
-                      <td className="text-right">
-                        <form action={deleteGoalAction}>
-                          <input type="hidden" name="householdId" value={h.id} />
-                          <input type="hidden" name="id" value={g.id} />
-                          <button className="btn-ghost text-xs">Remove</button>
-                        </form>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+        {!open ? (
+          <button onClick={() => setOpen(true)} className="btn-primary text-sm">
+            Add goal
+          </button>
+        ) : null}
       </div>
 
-      <div className="card">
-        <div className="card-header"><h2 className="font-semibold">Add goal</h2></div>
-        <form action={createGoalAction} className="card-body grid gap-3 md:grid-cols-2">
-          <input type="hidden" name="householdId" value={h.id} />
+      {open ? (
+        <form onSubmit={handleAdd} className="card card-pad grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label">Label</label>
-            <input className="input" name="label" required />
+            <input className="input" name="label" required placeholder="e.g. Anya's college" autoFocus />
           </div>
           <div>
             <label className="label">Type</label>
-            <select name="type" className="input" defaultValue="RETIREMENT">
-              {TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
+            <select className="input" name="type" defaultValue="Retirement">
+              {GOAL_TYPES.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="label">Target amount in today&apos;s {h.currency}</label>
-            <input className="input tabular-nums" name="targetAmountToday" type="number" required min="0" step="1" />
+            <label className="label">Target amount ({household.currency})</label>
+            <input className="input" name="targetAmount" inputMode="decimal" required placeholder="0" />
           </div>
           <div>
             <label className="label">Target year</label>
-            <input className="input tabular-nums" name="targetYear" type="number" required min={new Date().getFullYear() + 1} defaultValue={new Date().getFullYear() + 10} />
+            <input
+              className="input"
+              name="targetYear"
+              type="number"
+              defaultValue={currentYear + 10}
+              min={currentYear}
+              max={currentYear + 60}
+            />
           </div>
           <div>
-            <label className="label">Priority (1 = highest)</label>
-            <input className="input tabular-nums" name="priority" type="number" min="1" max="5" defaultValue="3" />
-          </div>
-          <div>
-            <label className="label">Inflation category</label>
-            <select name="inflationCategory" className="input" defaultValue="GENERAL">
-              <option value="GENERAL">General</option>
-              <option value="HEALTHCARE">Healthcare</option>
-              <option value="EDUCATION">Education</option>
+            <label className="label">Priority</label>
+            <select className="input" name="priority" defaultValue="3">
+              {PRIORITIES.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
             </select>
           </div>
-          <div>
-            <label className="label">Flexibility</label>
-            <select name="flexibility" className="input" defaultValue="SOFT">
-              <option value="FIXED">Fixed</option>
-              <option value="SOFT">Soft</option>
-              <option value="HIGHLY_FLEXIBLE">Highly flexible</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Linked to person (optional)</label>
-            <select name="linkedPersonId" className="input" defaultValue="">
-              <option value="">—</option>
-              {h.persons.map((p) => <option key={p.id} value={p.id}>{p.fullName}</option>)}
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <button className="btn-primary">Add goal</button>
+          <div className="sm:col-span-2 flex gap-2">
+            <button className="btn-primary text-sm" type="submit">
+              Save goal
+            </button>
+            <button type="button" className="btn-ghost text-sm" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
           </div>
         </form>
-      </div>
+      ) : null}
+
+      {goals.length === 0 ? (
+        <div className="card card-pad text-center text-sm text-ink-500">
+          No goals added yet.
+        </div>
+      ) : (
+        <ul className="card divide-y divide-line-100">
+          {[...goals]
+            .sort((a, b) => a.priority - b.priority || a.targetYear - b.targetYear)
+            .map((g) => {
+              const yearsAway = g.targetYear - currentYear;
+              const priorityLabel =
+                PRIORITIES.find((p) => p.value === g.priority)?.label ?? "Medium";
+              return (
+                <li key={g.id} className="px-5 py-4 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{g.label}</p>
+                    <p className="text-xs text-ink-500 mt-0.5">
+                      {g.type} · {priorityLabel} · {g.targetYear}
+                      {yearsAway > 0 ? ` (in ${yearsAway} yr${yearsAway === 1 ? "" : "s"})` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <p className="text-sm font-semibold tabular-nums">{fmt(g.targetAmount)}</p>
+                    <button onClick={() => handleRemove(g.id)} className="btn-danger text-xs">
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+        </ul>
+      )}
     </div>
   );
 }

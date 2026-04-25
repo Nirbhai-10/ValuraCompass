@@ -1,124 +1,144 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
-import { getHouseholdForUser } from "@/lib/household";
-import { createIncomeAction, deleteIncomeAction } from "./actions";
-import { formatCurrency } from "@/lib/utils";
+"use client";
 
-const INCOME_TYPES = [
-  "SALARY",
-  "BUSINESS",
-  "CONSULTING",
-  "RENTAL",
-  "DIVIDENDS",
-  "INTEREST",
-  "PENSION",
-  "ANNUITY",
-  "RSU_VEST",
-  "FAMILY_SUPPORT_IN",
-  "VARIABLE",
-  "OTHER",
-];
+import { FormEvent, useState } from "react";
+import { useParams } from "next/navigation";
+import { useDatabase, useUpdate, uid } from "@/lib/store";
+import { formatMoney, parseAmount } from "@/lib/format";
+import { INCOME_TYPES } from "@/lib/types";
 
-export default async function IncomePage({ params }: { params: { id: string } }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const h = await getHouseholdForUser(session.userId, params.id);
-  if (!h) redirect("/app");
-  const region = h.region as "IN" | "GCC" | "GLOBAL";
+export default function IncomePage() {
+  const params = useParams<{ id: string }>();
+  const householdId = params?.id ?? "";
+  const db = useDatabase();
+  const update = useUpdate();
+  const household = db.households.find((h) => h.id === householdId);
+  const persons = db.persons.filter((p) => p.householdId === householdId);
+  const incomes = db.incomes.filter((i) => i.householdId === householdId);
+  const [open, setOpen] = useState(false);
 
-  const total = h.incomes.reduce((s, i) => s + i.amountMonthly, 0);
+  if (!household) return null;
+  const fmt = (n: number) => formatMoney(n, household.currency, household.region);
+  const total = incomes.reduce((s, i) => s + i.amountMonthly, 0);
+
+  function handleAdd(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const label = String(fd.get("label") ?? "").trim();
+    const type = String(fd.get("type") ?? "Salary");
+    const amount = parseAmount(String(fd.get("amount") ?? ""));
+    const personId = String(fd.get("personId") ?? "") || undefined;
+    if (!label || amount <= 0) return;
+
+    update((curr) => ({
+      ...curr,
+      incomes: [
+        ...curr.incomes,
+        {
+          id: uid("inc"),
+          householdId,
+          label,
+          type,
+          amountMonthly: amount,
+          personId,
+        },
+      ],
+    }));
+    form.reset();
+    setOpen(false);
+  }
+
+  function handleRemove(id: string) {
+    update((curr) => ({
+      ...curr,
+      incomes: curr.incomes.filter((i) => i.id !== id),
+    }));
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="card">
-        <div className="card-header flex items-center justify-between">
-          <h2 className="font-semibold">Income sources</h2>
-          <span className="text-xs text-ink-500">Total: {formatCurrency(total, h.currency, region)}/month</span>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Income</h2>
+          <p className="text-sm text-ink-500 mt-1">
+            Total: <span className="font-semibold tabular-nums">{fmt(total)}</span> / month
+          </p>
         </div>
-        <div className="card-body">
-          {h.incomes.length === 0 ? (
-            <p className="text-sm text-ink-500">No income captured yet. Add your first source on the right.</p>
-          ) : (
-            <table className="w-full table">
-              <thead>
-                <tr>
-                  <th>Person</th>
-                  <th>Type</th>
-                  <th>Label</th>
-                  <th>Variability</th>
-                  <th className="text-right">Monthly</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {h.incomes.map((i) => {
-                  const p = h.persons.find((x) => x.id === i.personId);
-                  return (
-                    <tr key={i.id}>
-                      <td>{p?.fullName ?? "—"}</td>
-                      <td className="text-ink-500">{i.type}</td>
-                      <td>{i.label}</td>
-                      <td className="text-ink-500">{i.variability}</td>
-                      <td className="text-right tabular-nums">{formatCurrency(i.amountMonthly, i.currency ?? h.currency, region)}</td>
-                      <td className="text-right">
-                        <form action={deleteIncomeAction}>
-                          <input type="hidden" name="householdId" value={h.id} />
-                          <input type="hidden" name="id" value={i.id} />
-                          <button className="btn-ghost text-xs">Remove</button>
-                        </form>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+        {!open ? (
+          <button onClick={() => setOpen(true)} className="btn-primary text-sm">
+            Add income
+          </button>
+        ) : null}
       </div>
 
-      <div className="card">
-        <div className="card-header"><h2 className="font-semibold">Add income source</h2></div>
-        <form action={createIncomeAction} className="card-body grid gap-3 md:grid-cols-2">
-          <input type="hidden" name="householdId" value={h.id} />
+      {open ? (
+        <form onSubmit={handleAdd} className="card card-pad grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label">Person</label>
-            <select className="input" name="personId" required>
-              {h.persons.map((p) => (
-                <option key={p.id} value={p.id}>{p.fullName}</option>
+            <label className="label">Label</label>
+            <input className="input" name="label" required placeholder="e.g. Salary" autoFocus />
+          </div>
+          <div>
+            <label className="label">Type</label>
+            <select className="input" name="type" defaultValue="Salary">
+              {INCOME_TYPES.map((t) => (
+                <option key={t}>{t}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="label">Type</label>
-            <select name="type" className="input" defaultValue="SALARY">
-              {INCOME_TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
+            <label className="label">Monthly amount ({household.currency})</label>
+            <input className="input" name="amount" inputMode="decimal" required placeholder="0" />
+          </div>
+          <div>
+            <label className="label">Earner (optional)</label>
+            <select className="input" name="personId" defaultValue="">
+              <option value="">— Unassigned —</option>
+              {persons.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.fullName}
+                </option>
+              ))}
             </select>
           </div>
-          <div>
-            <label className="label">Label</label>
-            <input className="input" name="label" required placeholder="e.g., Primary salary" />
-          </div>
-          <div>
-            <label className="label">Monthly amount ({h.currency})</label>
-            <input className="input tabular-nums" name="amountMonthly" type="number" required min="0" step="1" />
-          </div>
-          <div>
-            <label className="label">Variability</label>
-            <select name="variability" className="input" defaultValue="STABLE">
-              <option value="STABLE">Stable</option>
-              <option value="MODERATE">Moderate</option>
-              <option value="HIGH">High</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Expected stability (years)</label>
-            <input className="input tabular-nums" name="stabilityYears" type="number" min="0" />
-          </div>
-          <div className="md:col-span-2">
-            <button className="btn-primary w-full md:w-auto">Add income</button>
+          <div className="sm:col-span-2 flex gap-2">
+            <button className="btn-primary text-sm" type="submit">
+              Save income
+            </button>
+            <button type="button" className="btn-ghost text-sm" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
           </div>
         </form>
-      </div>
+      ) : null}
+
+      {incomes.length === 0 ? (
+        <div className="card card-pad text-center text-sm text-ink-500">
+          No income added yet.
+        </div>
+      ) : (
+        <ul className="card divide-y divide-line-100">
+          {incomes.map((i) => {
+            const earner = persons.find((p) => p.id === i.personId);
+            return (
+              <li key={i.id} className="px-5 py-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{i.label}</p>
+                  <p className="text-xs text-ink-500 mt-0.5">
+                    {i.type}
+                    {earner ? ` · ${earner.fullName}` : ""}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <p className="text-sm font-semibold tabular-nums">{fmt(i.amountMonthly)}</p>
+                  <button onClick={() => handleRemove(i.id)} className="btn-danger text-xs">
+                    Remove
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

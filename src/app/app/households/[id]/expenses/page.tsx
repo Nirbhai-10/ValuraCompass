@@ -1,103 +1,135 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
-import { getHouseholdForUser } from "@/lib/household";
-import { createExpenseAction, deleteExpenseAction } from "./actions";
-import { formatCurrency } from "@/lib/utils";
+"use client";
 
-const CATEGORIES = [
-  "HOUSING", "UTILITIES", "GROCERIES", "TRANSPORT", "INSURANCE_PREMIUMS", "EDUCATION", "HEALTHCARE",
-  "PARENTAL_SUPPORT", "SPECIAL_NEEDS_CARE", "STAFF", "ENTERTAINMENT", "DINING", "TRAVEL",
-  "SUBSCRIPTIONS", "DEBT_SERVICE", "CHARITABLE", "CHILDREN_COSTS", "OTHER",
-];
+import { FormEvent, useState } from "react";
+import { useParams } from "next/navigation";
+import { useDatabase, useUpdate, uid } from "@/lib/store";
+import { formatMoney, parseAmount } from "@/lib/format";
+import { EXPENSE_CATEGORIES } from "@/lib/types";
 
-export default async function ExpensesPage({ params }: { params: { id: string } }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const h = await getHouseholdForUser(session.userId, params.id);
-  if (!h) redirect("/app");
-  const region = h.region as "IN" | "GCC" | "GLOBAL";
+export default function ExpensesPage() {
+  const params = useParams<{ id: string }>();
+  const householdId = params?.id ?? "";
+  const db = useDatabase();
+  const update = useUpdate();
+  const household = db.households.find((h) => h.id === householdId);
+  const expenses = db.expenses.filter((e) => e.householdId === householdId);
+  const [open, setOpen] = useState(false);
 
-  const essential = h.expenses.filter((e) => e.essential).reduce((s, e) => s + e.amountMonthly, 0);
-  const disc = h.expenses.filter((e) => !e.essential).reduce((s, e) => s + e.amountMonthly, 0);
+  if (!household) return null;
+  const fmt = (n: number) => formatMoney(n, household.currency, household.region);
+  const total = expenses.reduce((s, e) => s + e.amountMonthly, 0);
+
+  function handleAdd(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const category = String(fd.get("category") ?? "Other");
+    const label = String(fd.get("label") ?? "").trim();
+    const amount = parseAmount(String(fd.get("amount") ?? ""));
+    const essential = fd.get("essential") === "on";
+    if (amount <= 0) return;
+
+    update((curr) => ({
+      ...curr,
+      expenses: [
+        ...curr.expenses,
+        {
+          id: uid("exp"),
+          householdId,
+          category,
+          label: label || undefined,
+          amountMonthly: amount,
+          essential,
+        },
+      ],
+    }));
+    form.reset();
+    setOpen(false);
+  }
+
+  function handleRemove(id: string) {
+    update((curr) => ({
+      ...curr,
+      expenses: curr.expenses.filter((e) => e.id !== id),
+    }));
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="kpi"><p className="kpi-title">Essential monthly</p><p className="kpi-value">{formatCurrency(essential, h.currency, region)}</p></div>
-        <div className="kpi"><p className="kpi-title">Discretionary monthly</p><p className="kpi-value">{formatCurrency(disc, h.currency, region)}</p></div>
-        <div className="kpi"><p className="kpi-title">Total monthly</p><p className="kpi-value">{formatCurrency(essential + disc, h.currency, region)}</p></div>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Expenses</h2>
+          <p className="text-sm text-ink-500 mt-1">
+            Total: <span className="font-semibold tabular-nums">{fmt(total)}</span> / month
+          </p>
+        </div>
+        {!open ? (
+          <button onClick={() => setOpen(true)} className="btn-primary text-sm">
+            Add expense
+          </button>
+        ) : null}
       </div>
 
-      <div className="card">
-        <div className="card-header flex items-center justify-between">
-          <h2 className="font-semibold">Expense lines</h2>
-          <span className="text-xs text-ink-500">{h.expenses.length} line{h.expenses.length === 1 ? "" : "s"}</span>
-        </div>
-        <div className="card-body">
-          {h.expenses.length === 0 ? (
-            <p className="text-sm text-ink-500">No expenses captured yet. Add your first line below.</p>
-          ) : (
-            <table className="w-full table">
-              <thead>
-                <tr><th>Category</th><th>Label</th><th>Essential</th><th>Inflation</th><th className="text-right">Monthly</th><th></th></tr>
-              </thead>
-              <tbody>
-                {h.expenses.map((e) => (
-                  <tr key={e.id}>
-                    <td className="text-ink-500">{e.category.replace(/_/g, " ")}</td>
-                    <td>{e.label ?? "—"}</td>
-                    <td>{e.essential ? <span className="chip-positive">Essential</span> : <span className="chip-default">Discretionary</span>}</td>
-                    <td className="text-ink-500">{e.inflationSensitivity}</td>
-                    <td className="text-right tabular-nums">{formatCurrency(e.amountMonthly, e.currency ?? h.currency, region)}</td>
-                    <td className="text-right">
-                      <form action={deleteExpenseAction}>
-                        <input type="hidden" name="householdId" value={h.id} />
-                        <input type="hidden" name="id" value={e.id} />
-                        <button className="btn-ghost text-xs">Remove</button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-header"><h2 className="font-semibold">Add expense</h2></div>
-        <form action={createExpenseAction} className="card-body grid gap-3 md:grid-cols-2">
-          <input type="hidden" name="householdId" value={h.id} />
+      {open ? (
+        <form onSubmit={handleAdd} className="card card-pad grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label">Category</label>
-            <select name="category" className="input" defaultValue="HOUSING">
-              {CATEGORIES.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+            <select className="input" name="category" defaultValue="Housing" autoFocus>
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
             </select>
           </div>
           <div>
             <label className="label">Label (optional)</label>
-            <input className="input" name="label" placeholder="e.g., Rent / EMI / Groceries" />
+            <input className="input" name="label" placeholder="e.g. Apartment rent" />
           </div>
           <div>
-            <label className="label">Monthly amount ({h.currency})</label>
-            <input className="input tabular-nums" name="amountMonthly" type="number" required min="0" step="1" />
+            <label className="label">Monthly amount ({household.currency})</label>
+            <input className="input" name="amount" inputMode="decimal" required placeholder="0" />
           </div>
-          <div>
-            <label className="label">Inflation sensitivity</label>
-            <select name="inflationSensitivity" className="input" defaultValue="GENERAL">
-              <option value="GENERAL">General</option>
-              <option value="HEALTHCARE">Healthcare</option>
-              <option value="EDUCATION">Education</option>
-              <option value="CUSTOM">Custom</option>
-            </select>
+          <div className="flex items-end gap-2">
+            <label className="flex items-center gap-2 text-sm text-ink-700">
+              <input type="checkbox" name="essential" defaultChecked />
+              Essential
+            </label>
           </div>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="essential" defaultChecked /> Essential (mandatory)</label>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="nonNegotiable" /> Non-negotiable</label>
-          <div className="md:col-span-2">
-            <button className="btn-primary">Add expense</button>
+          <div className="sm:col-span-2 flex gap-2">
+            <button className="btn-primary text-sm" type="submit">
+              Save expense
+            </button>
+            <button type="button" className="btn-ghost text-sm" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
           </div>
         </form>
-      </div>
+      ) : null}
+
+      {expenses.length === 0 ? (
+        <div className="card card-pad text-center text-sm text-ink-500">
+          No expenses added yet.
+        </div>
+      ) : (
+        <ul className="card divide-y divide-line-100">
+          {expenses.map((e) => (
+            <li key={e.id} className="px-5 py-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{e.label || e.category}</p>
+                <p className="text-xs text-ink-500 mt-0.5">
+                  {e.category}
+                  {e.essential ? " · essential" : " · discretionary"}
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <p className="text-sm font-semibold tabular-nums">{fmt(e.amountMonthly)}</p>
+                <button onClick={() => handleRemove(e.id)} className="btn-danger text-xs">
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

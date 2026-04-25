@@ -1,211 +1,131 @@
+"use client";
+
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
-import { getHouseholdForUser } from "@/lib/household";
-import { computeScores, computeCashFlow, computeAllocation, projectGoals, getAssumptionsSync } from "@/lib/analytics/engine";
-import { generateInsights, rankNextBestActions } from "@/lib/analytics/insights";
-import { ScoreCard } from "@/components/score-card";
-import { InsightCard } from "@/components/insight-card";
-import { formatCurrency } from "@/lib/utils";
-import { prisma } from "@/lib/prisma";
+import { useParams } from "next/navigation";
+import { useDatabase } from "@/lib/store";
+import { formatMoney } from "@/lib/format";
 
-export default async function HouseholdOverview({ params }: { params: { id: string } }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const h = await getHouseholdForUser(session.userId, params.id);
-  if (!h) redirect("/app");
+export default function HouseholdOverviewPage() {
+  const params = useParams<{ id: string }>();
+  const id = params?.id ?? "";
+  const db = useDatabase();
+  const household = db.households.find((h) => h.id === id);
 
-  const bundle: any = h;
-  const scores = computeScores(bundle);
-  const cf = computeCashFlow(bundle);
-  const alloc = computeAllocation(bundle);
-  const goalProjections = projectGoals(bundle);
-  const insights = generateInsights(bundle, scores);
-  const nba = rankNextBestActions(insights);
-  const a = getAssumptionsSync(bundle);
+  if (!household) {
+    return null;
+  }
 
-  const openTasks = await prisma.task.count({
-    where: { householdId: h.id, status: { in: ["OPEN", "IN_PROGRESS"] } },
-  });
+  const persons = db.persons.filter((p) => p.householdId === id);
+  const incomes = db.incomes.filter((i) => i.householdId === id);
+  const expenses = db.expenses.filter((e) => e.householdId === id);
+  const assets = db.assets.filter((a) => a.householdId === id);
+  const liabilities = db.liabilities.filter((l) => l.householdId === id);
+  const policies = db.policies.filter((p) => p.householdId === id);
+  const goals = db.goals.filter((g) => g.householdId === id);
 
-  const currency = h.currency;
-  const region = h.region as "IN" | "GCC" | "GLOBAL";
+  const monthlyIncome = incomes.reduce((s, i) => s + i.amountMonthly, 0);
+  const monthlyExpense = expenses.reduce((s, e) => s + e.amountMonthly, 0);
+  const totalAssets = assets.reduce((s, a) => s + a.currentValue, 0);
+  const totalLiab = liabilities.reduce((s, l) => s + l.outstanding, 0);
+  const netWorth = totalAssets - totalLiab;
+  const sumAssured = policies.reduce((s, p) => s + p.sumAssured, 0);
+  const surplus = monthlyIncome - monthlyExpense;
+  const fmt = (n: number) => formatMoney(n, household.currency, household.region);
+
+  const KPIS: { title: string; value: string; sub: string }[] = [
+    { title: "Net worth", value: fmt(netWorth), sub: `${fmt(totalAssets)} − ${fmt(totalLiab)}` },
+    {
+      title: "Monthly surplus",
+      value: fmt(surplus),
+      sub: `${fmt(monthlyIncome)} − ${fmt(monthlyExpense)}`,
+    },
+    {
+      title: "Total cover",
+      value: fmt(sumAssured),
+      sub: `${policies.length} polic${policies.length === 1 ? "y" : "ies"}`,
+    },
+    {
+      title: "Goals",
+      value: String(goals.length),
+      sub: goals.length
+        ? `${fmt(goals.reduce((s, g) => s + g.targetAmount, 0))} target`
+        : "Add a goal",
+    },
+  ];
+
+  const SECTION_CARDS = [
+    {
+      href: `/app/households/${id}/people`,
+      label: "People",
+      count: persons.length,
+      hint: "Family members and dependents",
+    },
+    {
+      href: `/app/households/${id}/income`,
+      label: "Income",
+      count: incomes.length,
+      hint: "Salary, business, rental, etc.",
+    },
+    {
+      href: `/app/households/${id}/expenses`,
+      label: "Expenses",
+      count: expenses.length,
+      hint: "Recurring monthly outflows",
+    },
+    {
+      href: `/app/households/${id}/assets`,
+      label: "Assets",
+      count: assets.length,
+      hint: "Cash, investments, property",
+    },
+    {
+      href: `/app/households/${id}/liabilities`,
+      label: "Liabilities",
+      count: liabilities.length,
+      hint: "Loans, credit cards",
+    },
+    {
+      href: `/app/households/${id}/insurance`,
+      label: "Insurance",
+      count: policies.length,
+      hint: "Life, health, other policies",
+    },
+    {
+      href: `/app/households/${id}/goals`,
+      label: "Goals",
+      count: goals.length,
+      hint: "What you're planning for",
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* KPIs */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <ScoreCard score={scores.FHS} emphasis />
-        <ScoreCard score={scores.ERS} />
-        <ScoreCard score={scores.PAS} />
-        <ScoreCard score={scores.RRS} />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {KPIS.map((k) => (
+          <div key={k.title} className="card card-pad">
+            <p className="kpi-title">{k.title}</p>
+            <p className="kpi-value mt-1">{k.value}</p>
+            <p className="text-xs text-ink-500 mt-1">{k.sub}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
-        {/* Snapshot */}
-        <div className="card">
-          <div className="card-header flex items-center justify-between">
-            <h2 className="font-semibold">Household snapshot</h2>
-            <span className="text-xs text-ink-500">Based on current data</span>
-          </div>
-          <div className="card-body grid sm:grid-cols-2 gap-4">
-            <div>
-              <p className="section-title">Monthly cash flow</p>
-              <dl className="mt-2 text-sm space-y-1.5">
-                <div className="flex justify-between"><dt>Net income</dt><dd className="tabular-nums">{formatCurrency(cf.monthlyNetIncome, currency, region)}</dd></div>
-                <div className="flex justify-between"><dt>Essentials</dt><dd className="tabular-nums">{formatCurrency(cf.essentialMonthlyExpenses, currency, region)}</dd></div>
-                <div className="flex justify-between"><dt>Discretionary</dt><dd className="tabular-nums">{formatCurrency(cf.discretionaryMonthlyExpenses, currency, region)}</dd></div>
-                <div className="flex justify-between"><dt>EMIs</dt><dd className="tabular-nums">{formatCurrency(cf.totalEMI, currency, region)}</dd></div>
-                <div className="flex justify-between font-semibold pt-1 border-t border-line-100"><dt>Monthly surplus</dt><dd className="tabular-nums">{formatCurrency(cf.monthlySurplus, currency, region)}</dd></div>
-              </dl>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {SECTION_CARDS.map((s) => (
+          <Link
+            key={s.href}
+            href={s.href}
+            className="card card-pad block hover:border-brand-deep transition-colors"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">{s.label}</p>
+                <p className="text-xs text-ink-500 mt-0.5">{s.hint}</p>
+              </div>
+              <span className="chip">{s.count}</span>
             </div>
-            <div>
-              <p className="section-title">Balance sheet</p>
-              <dl className="mt-2 text-sm space-y-1.5">
-                <div className="flex justify-between"><dt>Total assets</dt><dd className="tabular-nums">{formatCurrency(alloc.total, currency, region)}</dd></div>
-                <div className="flex justify-between"><dt>Liquid (≤ 30d)</dt><dd className="tabular-nums">{formatCurrency(alloc.liquid30d, currency, region)}</dd></div>
-                <div className="flex justify-between"><dt>Illiquid</dt><dd className="tabular-nums">{formatCurrency(alloc.illiquid, currency, region)}</dd></div>
-                {alloc.concentrationTop ? (
-                  <div className="flex justify-between"><dt>Top holding</dt><dd className="tabular-nums">{alloc.concentrationTop.label} — {(alloc.concentrationTop.share * 100).toFixed(0)}%</dd></div>
-                ) : null}
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="card">
-          <div className="card-header flex items-center justify-between">
-            <h2 className="font-semibold">Next best actions</h2>
-            <Link href={`/app/households/${h.id}/tasks`} className="text-sm link">Action center →</Link>
-          </div>
-          <div className="card-body space-y-4">
-            {openTasks > 0 ? <p className="text-xs text-ink-500">{openTasks} open task{openTasks === 1 ? "" : "s"} in the action center.</p> : null}
-
-            {nba.client.length > 0 ? (
-              <div>
-                <p className="section-title mb-2">For the client</p>
-                <ul className="space-y-2">
-                  {nba.client.slice(0, 2).map((i) => (
-                    <li key={i.ruleId} className="border border-line-200 rounded-button p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium leading-snug">{i.title}</p>
-                      </div>
-                      {i.lever ? <p className="text-xs text-brand-deep mt-1.5">Lever · {i.lever}</p> : null}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {nba.advisor.length > 0 ? (
-              <div>
-                <p className="section-title mb-2">For advisor / specialist</p>
-                <ul className="space-y-2">
-                  {nba.advisor.slice(0, 2).map((i) => (
-                    <li key={i.ruleId} className="border border-line-200 rounded-button p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium leading-snug">{i.title}</p>
-                      </div>
-                      {i.lever ? <p className="text-xs text-brand-deep mt-1.5">Lever · {i.lever}</p> : null}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {nba.advisor.length + nba.client.length === 0 ? (
-              <p className="text-sm text-ink-500">No urgent actions right now. Keep the plan updated on life events and review next quarter.</p>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
-      {/* Scores grid (secondary) */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
-        <ScoreCard score={scores.CFS} />
-        <ScoreCard score={scores.IDS} />
-        <ScoreCard score={scores.DSS} />
-        <ScoreCard score={scores.LAS} />
-        <ScoreCard score={scores.HFS} />
-        <ScoreCard score={scores.FDRS} />
-        <ScoreCard score={scores.TES} />
-        <ScoreCard score={scores.CRS} />
-        <ScoreCard score={scores.ESS} />
-        <ScoreCard score={scores.RPS} />
-        <ScoreCard score={scores.ISS} />
-        <ScoreCard score={scores.DCS} />
-      </div>
-
-      {/* Top insights */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Top insights</h2>
-          <Link href={`/app/households/${h.id}/insights`} className="text-sm link">See all →</Link>
-        </div>
-        {insights.length === 0 ? (
-          <div className="card p-6 text-sm text-ink-500">No insights yet. Add income, expenses, policies, and goals to produce targeted observations.</div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {insights.slice(0, 4).map((i) => (
-              <InsightCard
-                key={i.ruleId}
-                title={i.title}
-                body={i.body}
-                severity={i.severity}
-                why={i.why}
-                numbers={i.numbers}
-                lever={i.lever}
-                affectedScores={i.affectedScores}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Goals */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Goals</h2>
-          <Link href={`/app/households/${h.id}/goals`} className="text-sm link">Open goals →</Link>
-        </div>
-        {goalProjections.length === 0 ? (
-          <div className="card p-6 text-sm text-ink-500">No goals yet. Add your first goal to see feasibility and SIP requirements.</div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {goalProjections.map((g) => (
-              <div key={g.goalId} className="card p-5">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-medium">{g.label}</h3>
-                  <span className={g.onTrack ? "chip-positive" : g.feasibility >= 0.6 ? "chip-low" : "chip-warn"}>
-                    {g.onTrack ? "On track" : g.feasibility >= 0.6 ? "Watch" : "At risk"}
-                  </span>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                  <div><p className="text-xs text-ink-500">Target year</p><p className="font-medium tabular-nums">{g.targetYear} ({g.yearsToGoal}y)</p></div>
-                  <div><p className="text-xs text-ink-500">Future cost</p><p className="font-medium tabular-nums">{formatCurrency(g.futureTarget, currency, region)}</p></div>
-                  <div><p className="text-xs text-ink-500">Required SIP</p><p className="font-medium tabular-nums">{formatCurrency(g.monthlySIPRequired, currency, region)}/mo</p></div>
-                  <div><p className="text-xs text-ink-500">Capacity share</p><p className="font-medium tabular-nums">{formatCurrency(g.capacityAssumed, currency, region)}/mo</p></div>
-                </div>
-                <div className="mt-3 h-1 bg-line-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-brand-deep" style={{ width: `${Math.max(4, Math.round(g.feasibility * 100))}%` }} />
-                </div>
-                <p className="text-[11px] text-ink-500 mt-1.5">Feasibility {Math.round(g.feasibility * 100)}% at current surplus share.</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Assumptions footer */}
-      <div className="card p-4 text-[11px] text-ink-500 flex flex-wrap items-center gap-x-4 gap-y-1">
-        <span className="uppercase tracking-wide text-ink-500 font-medium">Assumptions</span>
-        <span>Inflation {(a.inflationGeneral * 100).toFixed(1)}%</span>
-        <span>Equity {(a.equityNominalReturn * 100).toFixed(1)}%</span>
-        <span>Debt {(a.debtNominalReturn * 100).toFixed(1)}%</span>
-        <span>Retirement age {a.retirementAge}</span>
-        <span>Longevity {a.longevity}</span>
-        <Link className="link" href={`/app/households/${h.id}/assumptions`}>Edit →</Link>
+          </Link>
+        ))}
       </div>
     </div>
   );

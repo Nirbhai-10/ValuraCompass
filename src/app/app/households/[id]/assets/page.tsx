@@ -1,122 +1,133 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
-import { getHouseholdForUser } from "@/lib/household";
-import { createAssetAction, deleteAssetAction } from "./actions";
-import { formatCurrency } from "@/lib/utils";
+"use client";
 
-const CLASSES = [
-  "CASH", "EQUITY", "DEBT", "GOLD", "REAL_ESTATE", "RETIREMENT",
-  "INSURANCE_LINKED", "BUSINESS", "PRIVATE", "INTERNATIONAL", "COLLECTIBLE", "OTHER",
-];
+import { FormEvent, useState } from "react";
+import { useParams } from "next/navigation";
+import { useDatabase, useUpdate, uid } from "@/lib/store";
+import { formatMoney, parseAmount } from "@/lib/format";
+import { ASSET_CLASSES } from "@/lib/types";
 
-const INSTRUMENTS = [
-  "SAVINGS", "FD", "PPF", "EPF", "NPS", "SSY", "SCSS", "MF_EQUITY", "MF_DEBT", "MF_HYBRID",
-  "ELSS", "STOCKS", "BONDS", "NCD", "GOLD_PHY", "GOLD_SGB", "GOLD_ETF", "PROPERTY_RES",
-  "PROPERTY_COM", "PROPERTY_LAND", "ULIP", "ENDOWMENT", "ANNUITY", "PMS", "AIF", "UNLISTED",
-  "RSU", "ESOP", "OTHER",
-];
+export default function AssetsPage() {
+  const params = useParams<{ id: string }>();
+  const householdId = params?.id ?? "";
+  const db = useDatabase();
+  const update = useUpdate();
+  const household = db.households.find((h) => h.id === householdId);
+  const assets = db.assets.filter((a) => a.householdId === householdId);
+  const [open, setOpen] = useState(false);
 
-export default async function AssetsPage({ params }: { params: { id: string } }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const h = await getHouseholdForUser(session.userId, params.id);
-  if (!h) redirect("/app");
-  const region = h.region as "IN" | "GCC" | "GLOBAL";
+  if (!household) return null;
+  const fmt = (n: number) => formatMoney(n, household.currency, household.region);
+  const total = assets.reduce((s, a) => s + a.currentValue, 0);
 
-  const total = h.assets.reduce((s, a) => s + a.currentValue, 0);
+  function handleAdd(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const label = String(fd.get("label") ?? "").trim();
+    const assetClass = String(fd.get("assetClass") ?? "Cash");
+    const value = parseAmount(String(fd.get("value") ?? ""));
+    const notes = String(fd.get("notes") ?? "").trim();
+    if (!label || value <= 0) return;
+
+    update((curr) => ({
+      ...curr,
+      assets: [
+        ...curr.assets,
+        {
+          id: uid("ast"),
+          householdId,
+          label,
+          assetClass,
+          currentValue: value,
+          notes: notes || undefined,
+        },
+      ],
+    }));
+    form.reset();
+    setOpen(false);
+  }
+
+  function handleRemove(id: string) {
+    update((curr) => ({
+      ...curr,
+      assets: curr.assets.filter((a) => a.id !== id),
+    }));
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="card">
-        <div className="card-header flex items-center justify-between">
-          <h2 className="font-semibold">Assets</h2>
-          <span className="text-xs text-ink-500">Total: {formatCurrency(total, h.currency, region)}</span>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Assets</h2>
+          <p className="text-sm text-ink-500 mt-1">
+            Total: <span className="font-semibold tabular-nums">{fmt(total)}</span>
+          </p>
         </div>
-        <div className="card-body">
-          {h.assets.length === 0 ? (
-            <p className="text-sm text-ink-500">No assets yet. Add your first below.</p>
-          ) : (
-            <table className="w-full table">
-              <thead>
-                <tr>
-                  <th>Label</th><th>Class</th><th>Instrument</th><th>Liquidity</th><th>Ownership</th><th className="text-right">Value</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {h.assets.map((a) => (
-                  <tr key={a.id}>
-                    <td className="font-medium">{a.label}</td>
-                    <td className="text-ink-500">{a.assetClass}</td>
-                    <td className="text-ink-500">{a.instrument ?? "—"}</td>
-                    <td className="text-ink-500">{a.liquidityBucket}</td>
-                    <td className="text-ink-500">{a.ownershipType}</td>
-                    <td className="text-right tabular-nums">{formatCurrency(a.currentValue, a.currency ?? h.currency, region)}</td>
-                    <td className="text-right">
-                      <form action={deleteAssetAction}>
-                        <input type="hidden" name="householdId" value={h.id} />
-                        <input type="hidden" name="id" value={a.id} />
-                        <button className="btn-ghost text-xs">Remove</button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        {!open ? (
+          <button onClick={() => setOpen(true)} className="btn-primary text-sm">
+            Add asset
+          </button>
+        ) : null}
       </div>
 
-      <div className="card">
-        <div className="card-header"><h2 className="font-semibold">Add asset</h2></div>
-        <form action={createAssetAction} className="card-body grid gap-3 md:grid-cols-2">
-          <input type="hidden" name="householdId" value={h.id} />
+      {open ? (
+        <form onSubmit={handleAdd} className="card card-pad grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label">Label</label>
-            <input className="input" name="label" required />
+            <input className="input" name="label" required placeholder="e.g. HDFC savings" autoFocus />
           </div>
           <div>
-            <label className="label">Value ({h.currency})</label>
-            <input className="input tabular-nums" name="currentValue" type="number" required min="0" step="1" />
-          </div>
-          <div>
-            <label className="label">Asset class</label>
-            <select name="assetClass" className="input" defaultValue="EQUITY">
-              {CLASSES.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
+            <label className="label">Class</label>
+            <select className="input" name="assetClass" defaultValue="Cash">
+              {ASSET_CLASSES.map((c) => (
+                <option key={c}>{c}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="label">Instrument</label>
-            <select name="instrument" className="input" defaultValue="MF_EQUITY">
-              {INSTRUMENTS.map((c) => <option key={c} value={c}>{c.replace(/_/g, " ")}</option>)}
-            </select>
+            <label className="label">Current value ({household.currency})</label>
+            <input className="input" name="value" inputMode="decimal" required placeholder="0" />
           </div>
           <div>
-            <label className="label">Liquidity bucket</label>
-            <select name="liquidityBucket" className="input" defaultValue="D30">
-              <option value="T0">T+0 (same day)</option>
-              <option value="T2">T+2</option>
-              <option value="D30">30 days</option>
-              <option value="D90">90 days</option>
-              <option value="Y1">1 year</option>
-              <option value="ILLIQUID">Illiquid</option>
-            </select>
+            <label className="label">Notes (optional)</label>
+            <input className="input" name="notes" />
           </div>
-          <div>
-            <label className="label">Ownership</label>
-            <select name="ownershipType" className="input" defaultValue="SOLE">
-              <option value="SOLE">Sole</option>
-              <option value="JOINT_SPOUSE">Joint with spouse</option>
-              <option value="JOINT_OTHER">Joint with other</option>
-              <option value="HUF">HUF</option>
-              <option value="TRUST">Trust</option>
-              <option value="ENTITY">Entity</option>
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <button className="btn-primary">Add asset</button>
+          <div className="sm:col-span-2 flex gap-2">
+            <button className="btn-primary text-sm" type="submit">
+              Save asset
+            </button>
+            <button type="button" className="btn-ghost text-sm" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
           </div>
         </form>
-      </div>
+      ) : null}
+
+      {assets.length === 0 ? (
+        <div className="card card-pad text-center text-sm text-ink-500">
+          No assets added yet.
+        </div>
+      ) : (
+        <ul className="card divide-y divide-line-100">
+          {assets.map((a) => (
+            <li key={a.id} className="px-5 py-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{a.label}</p>
+                <p className="text-xs text-ink-500 mt-0.5">
+                  {a.assetClass}
+                  {a.notes ? ` · ${a.notes}` : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <p className="text-sm font-semibold tabular-nums">{fmt(a.currentValue)}</p>
+                <button onClick={() => handleRemove(a.id)} className="btn-danger text-xs">
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

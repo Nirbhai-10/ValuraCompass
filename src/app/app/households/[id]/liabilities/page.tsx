@@ -1,114 +1,142 @@
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
-import { getHouseholdForUser } from "@/lib/household";
-import { createLiabilityAction, deleteLiabilityAction } from "./actions";
-import { formatCurrency } from "@/lib/utils";
+"use client";
 
-const TYPES = [
-  "HOME_LOAN", "VEHICLE_LOAN", "PERSONAL_LOAN", "EDUCATION_LOAN", "BUSINESS_LOAN",
-  "CREDIT_CARD", "FAMILY_LOAN", "INFORMAL", "OTHER",
-];
+import { FormEvent, useState } from "react";
+import { useParams } from "next/navigation";
+import { useDatabase, useUpdate, uid } from "@/lib/store";
+import { formatMoney, parseAmount } from "@/lib/format";
+import { LIABILITY_TYPES } from "@/lib/types";
 
-export default async function LiabilitiesPage({ params }: { params: { id: string } }) {
-  const session = await getSession();
-  if (!session) redirect("/login");
-  const h = await getHouseholdForUser(session.userId, params.id);
-  if (!h) redirect("/app");
-  const region = h.region as "IN" | "GCC" | "GLOBAL";
+export default function LiabilitiesPage() {
+  const params = useParams<{ id: string }>();
+  const householdId = params?.id ?? "";
+  const db = useDatabase();
+  const update = useUpdate();
+  const household = db.households.find((h) => h.id === householdId);
+  const liabilities = db.liabilities.filter((l) => l.householdId === householdId);
+  const [open, setOpen] = useState(false);
 
-  const totalOut = h.liabilities.reduce((s, l) => s + l.outstanding, 0);
-  const totalEMI = h.liabilities.reduce((s, l) => s + (l.emiMonthly ?? 0), 0);
+  if (!household) return null;
+  const fmt = (n: number) => formatMoney(n, household.currency, household.region);
+  const total = liabilities.reduce((s, l) => s + l.outstanding, 0);
+  const totalEmi = liabilities.reduce((s, l) => s + (l.emiMonthly ?? 0), 0);
+
+  function handleAdd(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const label = String(fd.get("label") ?? "").trim();
+    const type = String(fd.get("type") ?? "Other");
+    const outstanding = parseAmount(String(fd.get("outstanding") ?? ""));
+    const emi = parseAmount(String(fd.get("emi") ?? ""));
+    const rate = parseAmount(String(fd.get("rate") ?? ""));
+    if (!label || outstanding <= 0) return;
+
+    update((curr) => ({
+      ...curr,
+      liabilities: [
+        ...curr.liabilities,
+        {
+          id: uid("lia"),
+          householdId,
+          label,
+          type,
+          outstanding,
+          emiMonthly: emi > 0 ? emi : undefined,
+          interestRate: rate > 0 ? rate : undefined,
+        },
+      ],
+    }));
+    form.reset();
+    setOpen(false);
+  }
+
+  function handleRemove(id: string) {
+    update((curr) => ({
+      ...curr,
+      liabilities: curr.liabilities.filter((l) => l.id !== id),
+    }));
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="kpi"><p className="kpi-title">Total outstanding</p><p className="kpi-value">{formatCurrency(totalOut, h.currency, region)}</p></div>
-        <div className="kpi"><p className="kpi-title">Total monthly EMI</p><p className="kpi-value">{formatCurrency(totalEMI, h.currency, region)}</p></div>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Liabilities</h2>
+          <p className="text-sm text-ink-500 mt-1">
+            Total: <span className="font-semibold tabular-nums">{fmt(total)}</span>
+            {totalEmi > 0 ? <> · EMIs <span className="font-semibold tabular-nums">{fmt(totalEmi)}</span> / mo</> : null}
+          </p>
+        </div>
+        {!open ? (
+          <button onClick={() => setOpen(true)} className="btn-primary text-sm">
+            Add liability
+          </button>
+        ) : null}
       </div>
 
-      <div className="card">
-        <div className="card-header flex items-center justify-between">
-          <h2 className="font-semibold">Liabilities</h2>
-          <span className="text-xs text-ink-500">{h.liabilities.length} line{h.liabilities.length === 1 ? "" : "s"}</span>
-        </div>
-        <div className="card-body">
-          {h.liabilities.length === 0 ? (
-            <p className="text-sm text-ink-500">No liabilities captured.</p>
-          ) : (
-            <table className="w-full table">
-              <thead>
-                <tr><th>Label</th><th>Type</th><th>Lender</th><th>Rate</th><th className="text-right">Outstanding</th><th className="text-right">EMI</th><th></th></tr>
-              </thead>
-              <tbody>
-                {h.liabilities.map((l) => (
-                  <tr key={l.id}>
-                    <td className="font-medium">{l.label}</td>
-                    <td className="text-ink-500">{l.type.replace(/_/g, " ")}</td>
-                    <td className="text-ink-500">{l.lender ?? "—"}</td>
-                    <td className="text-ink-500">{l.interestRate != null ? `${l.interestRate}% ${l.interestType ?? ""}` : "—"}</td>
-                    <td className="text-right tabular-nums">{formatCurrency(l.outstanding, l.currency ?? h.currency, region)}</td>
-                    <td className="text-right tabular-nums">{formatCurrency(l.emiMonthly ?? 0, l.currency ?? h.currency, region)}</td>
-                    <td className="text-right">
-                      <form action={deleteLiabilityAction}>
-                        <input type="hidden" name="householdId" value={h.id} />
-                        <input type="hidden" name="id" value={l.id} />
-                        <button className="btn-ghost text-xs">Remove</button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-header"><h2 className="font-semibold">Add liability</h2></div>
-        <form action={createLiabilityAction} className="card-body grid gap-3 md:grid-cols-2">
-          <input type="hidden" name="householdId" value={h.id} />
+      {open ? (
+        <form onSubmit={handleAdd} className="card card-pad grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label">Label</label>
-            <input className="input" name="label" required />
+            <input className="input" name="label" required placeholder="e.g. Home loan" autoFocus />
           </div>
           <div>
             <label className="label">Type</label>
-            <select name="type" className="input" defaultValue="HOME_LOAN">
-              {TYPES.map((t) => <option key={t} value={t}>{t.replace(/_/g, " ")}</option>)}
+            <select className="input" name="type" defaultValue="Home loan">
+              {LIABILITY_TYPES.map((t) => (
+                <option key={t}>{t}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="label">Lender</label>
-            <input className="input" name="lender" />
+            <label className="label">Outstanding ({household.currency})</label>
+            <input className="input" name="outstanding" inputMode="decimal" required placeholder="0" />
           </div>
           <div>
-            <label className="label">Outstanding ({h.currency})</label>
-            <input className="input tabular-nums" name="outstanding" type="number" required min="0" step="1" />
+            <label className="label">EMI / month (optional)</label>
+            <input className="input" name="emi" inputMode="decimal" placeholder="0" />
           </div>
           <div>
-            <label className="label">Interest rate (%)</label>
-            <input className="input tabular-nums" name="interestRate" type="number" step="0.01" min="0" />
+            <label className="label">Interest rate % (optional)</label>
+            <input className="input" name="rate" inputMode="decimal" placeholder="0" />
           </div>
-          <div>
-            <label className="label">Interest type</label>
-            <select name="interestType" className="input" defaultValue="FIXED">
-              <option value="FIXED">Fixed</option>
-              <option value="FLOATING">Floating</option>
-            </select>
-          </div>
-          <div>
-            <label className="label">Tenure remaining (months)</label>
-            <input className="input tabular-nums" name="tenureMonths" type="number" min="0" />
-          </div>
-          <div>
-            <label className="label">Monthly EMI</label>
-            <input className="input tabular-nums" name="emiMonthly" type="number" min="0" step="1" />
-          </div>
-          <div className="md:col-span-2">
-            <button className="btn-primary">Add liability</button>
+          <div className="sm:col-span-2 flex gap-2">
+            <button className="btn-primary text-sm" type="submit">
+              Save liability
+            </button>
+            <button type="button" className="btn-ghost text-sm" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
           </div>
         </form>
-      </div>
+      ) : null}
+
+      {liabilities.length === 0 ? (
+        <div className="card card-pad text-center text-sm text-ink-500">
+          No liabilities added yet.
+        </div>
+      ) : (
+        <ul className="card divide-y divide-line-100">
+          {liabilities.map((l) => (
+            <li key={l.id} className="px-5 py-4 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{l.label}</p>
+                <p className="text-xs text-ink-500 mt-0.5">
+                  {l.type}
+                  {l.emiMonthly ? ` · ${fmt(l.emiMonthly)} / mo` : ""}
+                  {l.interestRate ? ` · ${l.interestRate}%` : ""}
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <p className="text-sm font-semibold tabular-nums">{fmt(l.outstanding)}</p>
+                <button onClick={() => handleRemove(l.id)} className="btn-danger text-xs">
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
