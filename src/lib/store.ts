@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import { migrate } from "./migrations";
 import { Database, EMPTY_DB } from "./types";
 
 const STORAGE_KEY = "compass-data-v1";
@@ -22,18 +23,18 @@ function read(): Database {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      cache = { ...EMPTY_DB };
+      cache = migrate(undefined);
       return cache;
     }
     const parsed = JSON.parse(raw) as Partial<Envelope> | Partial<Database>;
-    const data: Partial<Database> =
+    const data: Partial<Database> | undefined =
       typeof parsed === "object" && parsed !== null && "data" in parsed
         ? ((parsed as Envelope).data ?? {})
         : (parsed as Partial<Database>);
-    cache = { ...EMPTY_DB, ...data };
+    cache = migrate(data);
     return cache;
   } catch {
-    cache = { ...EMPTY_DB };
+    cache = migrate(undefined);
     return cache;
   }
 }
@@ -100,14 +101,14 @@ export function exportAll(): string {
 export function importAll(text: string): { ok: true } | { ok: false; error: string } {
   try {
     const parsed = JSON.parse(text);
-    const data: Partial<Database> =
+    const data: Partial<Database> | undefined =
       typeof parsed === "object" && parsed !== null && "data" in parsed
         ? (parsed as Envelope).data
         : (parsed as Partial<Database>);
     if (!data || typeof data !== "object") {
       return { ok: false, error: "Invalid file: not a Compass export." };
     }
-    write({ ...EMPTY_DB, ...data });
+    write(migrate(data));
     return { ok: true };
   } catch (e) {
     return { ok: false, error: (e as Error).message || "Could not parse JSON." };
@@ -115,7 +116,7 @@ export function importAll(text: string): { ok: true } | { ok: false; error: stri
 }
 
 export function resetAll(): void {
-  write({ ...EMPTY_DB });
+  write(migrate(undefined));
 }
 
 // Cross-tab sync

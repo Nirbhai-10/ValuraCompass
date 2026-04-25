@@ -47,6 +47,7 @@ export interface Expense {
   label?: string;
   amountMonthly: number;
   essential: boolean;
+  notes?: string;
 }
 
 export interface Asset {
@@ -88,6 +89,7 @@ export interface Goal {
   targetAmount: number;
   targetYear: number;
   priority: number;
+  linkedAssetIds: string[];
   notes?: string;
 }
 

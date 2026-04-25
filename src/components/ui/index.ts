@@ -6,3 +6,6 @@ export { EntityList, EntityRow } from "./entity-row";
 export { Field, Input, Select, Textarea } from "./field";
 export { Kpi } from "./kpi";
 export { PageHeader } from "./page-header";
+export { SearchInput, matchesQuery } from "./search-input";
+export { ToastProvider, useToast } from "./toast";
+export type { ToastTone } from "./toast";

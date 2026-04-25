@@ -1,9 +1,12 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { useDatabase, useUpdate, uid } from "@/lib/store";
-import { formatMoney, parseAmount } from "@/lib/format";
+import { useDatabase, useUpdate } from "@/lib/store";
+import { selectExpenses, selectHousehold } from "@/lib/selectors";
+import { addExpense, removeExpense, updateExpense } from "@/lib/mutations";
+import { parseExpense } from "@/lib/validation";
+import { formatMoney } from "@/lib/format";
 import { EXPENSE_CATEGORIES, Expense } from "@/lib/types";
 import {
   Button,
@@ -13,9 +16,13 @@ import {
   EntityRow,
   Field,
   Input,
-  Select,
   PageHeader,
+  SearchInput,
+  Select,
+  Textarea,
+  matchesQuery,
   useDialog,
+  useToast,
 } from "@/components/ui";
 
 export default function ExpensesPage() {
@@ -23,9 +30,20 @@ export default function ExpensesPage() {
   const householdId = params?.id ?? "";
   const db = useDatabase();
   const update = useUpdate();
-  const household = db.households.find((h) => h.id === householdId);
-  const expenses = db.expenses.filter((e) => e.householdId === householdId);
+  const toast = useToast();
+  const household = selectHousehold(db, householdId);
+  const expenses = selectExpenses(db, householdId);
   const dialog = useDialog<Expense>();
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const filtered = useMemo(
+    () =>
+      expenses.filter((e) =>
+        matchesQuery(query, e.label, e.category, e.notes),
+      ),
+    [expenses, query],
+  );
 
   if (!household) return null;
   const fmt = (n: number) => formatMoney(n, household.currency, household.region);
@@ -36,45 +54,27 @@ export default function ExpensesPage() {
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const category = String(fd.get("category") ?? "Other");
-    const label = String(fd.get("label") ?? "").trim();
-    const amount = parseAmount(String(fd.get("amount") ?? ""));
-    const essential = fd.get("essential") === "on";
-    if (amount <= 0) return;
-
-    update((curr) => {
-      if (dialog.item) {
-        return {
-          ...curr,
-          expenses: curr.expenses.map((x) =>
-            x.id === dialog.item!.id
-              ? { ...x, category, label: label || undefined, amountMonthly: amount, essential }
-              : x,
-          ),
-        };
-      }
-      return {
-        ...curr,
-        expenses: [
-          ...curr.expenses,
-          {
-            id: uid("exp"),
-            householdId,
-            category,
-            label: label || undefined,
-            amountMonthly: amount,
-            essential,
-          },
-        ],
-      };
-    });
+    const result = parseExpense(new FormData(e.currentTarget));
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    const display = result.value.label || result.value.category;
+    if (dialog.item) {
+      update(updateExpense(dialog.item.id, result.value));
+      toast.success(`Updated ${display}.`);
+    } else {
+      update(addExpense(householdId, result.value));
+      toast.success(`Added ${display}.`);
+    }
     dialog.close();
   }
 
-  function handleDelete(id: string) {
-    if (!window.confirm("Remove this expense?")) return;
-    update((curr) => ({ ...curr, expenses: curr.expenses.filter((e) => e.id !== id) }));
+  function handleDelete(item: Expense) {
+    const display = item.label || item.category;
+    if (!window.confirm(`Remove ${display}?`)) return;
+    update(removeExpense(item.id));
+    toast.success(`Removed ${display}.`);
   }
 
   return (
@@ -84,11 +84,18 @@ export default function ExpensesPage() {
         subtitle={
           <>
             <span className="font-semibold tabular-nums text-ink-900">{fmt(total)}</span> per
-            month{essentialTotal > 0 ? <> · {fmt(essentialTotal)} essential</> : null}.
+            month
+            {essentialTotal > 0 ? (
+              <>
+                {" "}
+                · <span className="tabular-nums">{fmt(essentialTotal)}</span> essential
+              </>
+            ) : null}
+            .
           </>
         }
         action={
-          <Button variant="primary" onClick={() => dialog.openFor(null)}>
+          <Button variant="primary" onClick={() => { setError(null); dialog.openFor(null); }}>
             Add expense
           </Button>
         }
@@ -99,29 +106,42 @@ export default function ExpensesPage() {
           title="No expenses yet"
           description="Recurring monthly outflows: rent, groceries, utilities, EMIs, subscriptions."
           action={
-            <Button variant="primary" onClick={() => dialog.openFor(null)}>
+            <Button variant="primary" onClick={() => { setError(null); dialog.openFor(null); }}>
               Add the first expense
             </Button>
           }
         />
       ) : (
-        <EntityList>
-          {expenses.map((e) => (
-            <EntityRow
-              key={e.id}
-              primary={e.label || e.category}
-              secondary={
-                <>
-                  {e.category}
-                  {e.essential ? " · essential" : " · discretionary"}
-                </>
-              }
-              trailing={`${fmt(e.amountMonthly)} / mo`}
-              onEdit={() => dialog.openFor(e)}
-              onDelete={() => handleDelete(e.id)}
-            />
-          ))}
-        </EntityList>
+        <>
+          <SearchInput
+            placeholder="Search expenses…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+
+          {filtered.length === 0 ? (
+            <p className="text-sm text-ink-500">No matches for "{query}".</p>
+          ) : (
+            <EntityList>
+              {filtered.map((e) => (
+                <EntityRow
+                  key={e.id}
+                  primary={e.label || e.category}
+                  secondary={
+                    <>
+                      {e.category}
+                      {e.essential ? " · essential" : " · discretionary"}
+                      {e.notes ? ` · ${e.notes}` : ""}
+                    </>
+                  }
+                  trailing={`${fmt(e.amountMonthly)} / mo`}
+                  onEdit={() => { setError(null); dialog.openFor(e); }}
+                  onDelete={() => handleDelete(e)}
+                />
+              ))}
+            </EntityList>
+          )}
+        </>
       )}
 
       <Dialog
@@ -130,6 +150,11 @@ export default function ExpensesPage() {
         title={dialog.item ? "Edit expense" : "Add expense"}
       >
         <form onSubmit={handleSubmit} className="grid gap-4">
+          {error ? (
+            <div className="text-xs text-severity-critical bg-red-50 px-3 py-2 rounded-button">
+              {error}
+            </div>
+          ) : null}
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="Category" htmlFor="category">
               <Select
@@ -171,6 +196,9 @@ export default function ExpensesPage() {
             />
             Essential (hard to cut back)
           </label>
+          <Field label="Notes" htmlFor="notes">
+            <Textarea id="notes" name="notes" defaultValue={dialog.item?.notes ?? ""} />
+          </Field>
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={dialog.close} type="button">
               Cancel

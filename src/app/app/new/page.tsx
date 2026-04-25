@@ -2,72 +2,52 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
-import { nowISO, uid, useUpdate } from "@/lib/store";
+import { useUpdate } from "@/lib/store";
+import { addHousehold } from "@/lib/mutations";
+import { parseHousehold } from "@/lib/validation";
 import {
   HouseholdStructure,
   REGION_LABELS,
   Region,
   STRUCTURE_LABELS,
 } from "@/lib/types";
-import { Button, Card, Field, Input, PageHeader, Select } from "@/components/ui";
+import {
+  Button,
+  Card,
+  Field,
+  Input,
+  PageHeader,
+  Select,
+  useToast,
+} from "@/components/ui";
 
 const CURRENCIES = ["INR", "AED", "USD", "EUR", "GBP", "SAR", "QAR", "OMR"] as const;
 
 export default function NewHouseholdPage() {
   const router = useRouter();
   const update = useUpdate();
+  const toast = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (submitting) return;
-    setSubmitting(true);
     setError(null);
 
-    const fd = new FormData(e.currentTarget);
-    const name = String(fd.get("name") ?? "").trim();
-    const region = String(fd.get("region") ?? "IN") as Region;
-    const currency = String(fd.get("currency") ?? "INR");
-    const structure = String(fd.get("structure") ?? "NUCLEAR") as HouseholdStructure;
-    const primaryName = String(fd.get("primaryName") ?? "").trim();
-
-    if (!name || !primaryName) {
-      setError("Please fill in the household name and the primary person's name.");
-      setSubmitting(false);
+    const result = parseHousehold(new FormData(e.currentTarget));
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
 
-    const householdId = uid("hh");
-    const personId = uid("p");
-    const ts = nowISO();
-
-    update((db) => ({
-      ...db,
-      households: [
-        ...db.households,
-        {
-          id: householdId,
-          name,
-          region,
-          currency,
-          structure,
-          createdAt: ts,
-          updatedAt: ts,
-        },
-      ],
-      persons: [
-        ...db.persons,
-        {
-          id: personId,
-          householdId,
-          fullName: primaryName,
-          relation: "Self",
-          isPrimary: true,
-        },
-      ],
-    }));
-
+    setSubmitting(true);
+    const { mutator, householdId } = addHousehold(
+      result.value.household,
+      result.value.primaryName,
+    );
+    update(mutator);
+    toast.success(`Created ${result.value.household.name}.`);
     router.push(`/app/households/${householdId}`);
   }
 

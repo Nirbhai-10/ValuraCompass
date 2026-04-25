@@ -1,9 +1,12 @@
 "use client";
 
-import { FormEvent } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { useDatabase, useUpdate, uid } from "@/lib/store";
-import { formatMoney, parseAmount } from "@/lib/format";
+import { useDatabase, useUpdate } from "@/lib/store";
+import { selectHousehold, selectIncomes, selectPersons } from "@/lib/selectors";
+import { addIncome, removeIncome, updateIncome } from "@/lib/mutations";
+import { parseIncome } from "@/lib/validation";
+import { formatMoney } from "@/lib/format";
 import { INCOME_TYPES, Income } from "@/lib/types";
 import {
   Button,
@@ -13,9 +16,13 @@ import {
   EntityRow,
   Field,
   Input,
-  Select,
   PageHeader,
+  SearchInput,
+  Select,
+  Textarea,
+  matchesQuery,
   useDialog,
+  useToast,
 } from "@/components/ui";
 
 export default function IncomePage() {
@@ -23,10 +30,19 @@ export default function IncomePage() {
   const householdId = params?.id ?? "";
   const db = useDatabase();
   const update = useUpdate();
-  const household = db.households.find((h) => h.id === householdId);
-  const persons = db.persons.filter((p) => p.householdId === householdId);
-  const incomes = db.incomes.filter((i) => i.householdId === householdId);
+  const toast = useToast();
+  const household = selectHousehold(db, householdId);
+  const persons = selectPersons(db, householdId);
+  const incomes = selectIncomes(db, householdId);
   const dialog = useDialog<Income>();
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const filtered = useMemo(
+    () =>
+      incomes.filter((i) => matchesQuery(query, i.label, i.type, i.notes)),
+    [incomes, query],
+  );
 
   if (!household) return null;
   const fmt = (n: number) => formatMoney(n, household.currency, household.region);
@@ -34,38 +50,25 @@ export default function IncomePage() {
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const label = String(fd.get("label") ?? "").trim();
-    const type = String(fd.get("type") ?? "Salary");
-    const amount = parseAmount(String(fd.get("amount") ?? ""));
-    const personId = String(fd.get("personId") ?? "") || undefined;
-    if (!label || amount <= 0) return;
-
-    update((curr) => {
-      if (dialog.item) {
-        return {
-          ...curr,
-          incomes: curr.incomes.map((i) =>
-            i.id === dialog.item!.id
-              ? { ...i, label, type, amountMonthly: amount, personId }
-              : i,
-          ),
-        };
-      }
-      return {
-        ...curr,
-        incomes: [
-          ...curr.incomes,
-          { id: uid("inc"), householdId, label, type, amountMonthly: amount, personId },
-        ],
-      };
-    });
+    const result = parseIncome(new FormData(e.currentTarget));
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    if (dialog.item) {
+      update(updateIncome(dialog.item.id, result.value));
+      toast.success(`Updated ${result.value.label}.`);
+    } else {
+      update(addIncome(householdId, result.value));
+      toast.success(`Added ${result.value.label}.`);
+    }
     dialog.close();
   }
 
-  function handleDelete(id: string) {
-    if (!window.confirm("Remove this income?")) return;
-    update((curr) => ({ ...curr, incomes: curr.incomes.filter((i) => i.id !== id) }));
+  function handleDelete(item: Income) {
+    if (!window.confirm(`Remove ${item.label}?`)) return;
+    update(removeIncome(item.id));
+    toast.success(`Removed ${item.label}.`);
   }
 
   return (
@@ -79,7 +82,7 @@ export default function IncomePage() {
           </>
         }
         action={
-          <Button variant="primary" onClick={() => dialog.openFor(null)}>
+          <Button variant="primary" onClick={() => { setError(null); dialog.openFor(null); }}>
             Add income
           </Button>
         }
@@ -90,32 +93,45 @@ export default function IncomePage() {
           title="No income added yet"
           description="Add salary, business income, rental, or anything that comes in regularly."
           action={
-            <Button variant="primary" onClick={() => dialog.openFor(null)}>
+            <Button variant="primary" onClick={() => { setError(null); dialog.openFor(null); }}>
               Add the first income
             </Button>
           }
         />
       ) : (
-        <EntityList>
-          {incomes.map((i) => {
-            const earner = persons.find((p) => p.id === i.personId);
-            return (
-              <EntityRow
-                key={i.id}
-                primary={i.label}
-                secondary={
-                  <>
-                    {i.type}
-                    {earner ? ` · ${earner.fullName}` : ""}
-                  </>
-                }
-                trailing={`${fmt(i.amountMonthly)} / mo`}
-                onEdit={() => dialog.openFor(i)}
-                onDelete={() => handleDelete(i.id)}
-              />
-            );
-          })}
-        </EntityList>
+        <>
+          <SearchInput
+            placeholder="Search income…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+
+          {filtered.length === 0 ? (
+            <p className="text-sm text-ink-500">No matches for "{query}".</p>
+          ) : (
+            <EntityList>
+              {filtered.map((i) => {
+                const earner = persons.find((p) => p.id === i.personId);
+                return (
+                  <EntityRow
+                    key={i.id}
+                    primary={i.label}
+                    secondary={
+                      <>
+                        {i.type}
+                        {earner ? ` · ${earner.fullName}` : ""}
+                        {i.notes ? ` · ${i.notes}` : ""}
+                      </>
+                    }
+                    trailing={`${fmt(i.amountMonthly)} / mo`}
+                    onEdit={() => { setError(null); dialog.openFor(i); }}
+                    onDelete={() => handleDelete(i)}
+                  />
+                );
+              })}
+            </EntityList>
+          )}
+        </>
       )}
 
       <Dialog
@@ -124,6 +140,11 @@ export default function IncomePage() {
         title={dialog.item ? "Edit income" : "Add income"}
       >
         <form onSubmit={handleSubmit} className="grid gap-4">
+          {error ? (
+            <div className="text-xs text-severity-critical bg-red-50 px-3 py-2 rounded-button">
+              {error}
+            </div>
+          ) : null}
           <Field label="Label" htmlFor="label">
             <Input
               id="label"
@@ -142,10 +163,7 @@ export default function IncomePage() {
                 ))}
               </Select>
             </Field>
-            <Field
-              label={`Monthly (${household.currency})`}
-              htmlFor="amount"
-            >
+            <Field label={`Monthly (${household.currency})`} htmlFor="amount">
               <Input
                 id="amount"
                 name="amount"
@@ -156,7 +174,7 @@ export default function IncomePage() {
               />
             </Field>
           </div>
-          <Field label="Earner" hint="Who does this income belong to?" htmlFor="personId">
+          <Field label="Earner" htmlFor="personId">
             <Select
               id="personId"
               name="personId"
@@ -169,6 +187,9 @@ export default function IncomePage() {
                 </option>
               ))}
             </Select>
+          </Field>
+          <Field label="Notes" htmlFor="notes">
+            <Textarea id="notes" name="notes" defaultValue={dialog.item?.notes ?? ""} />
           </Field>
           <div className="flex items-center justify-end gap-2 pt-2">
             <Button variant="ghost" onClick={dialog.close} type="button">

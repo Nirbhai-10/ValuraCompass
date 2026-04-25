@@ -1,18 +1,14 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { exportAll, importAll, resetAll, useDatabase, useHydrated } from "@/lib/store";
-import { Button, Card, PageHeader } from "@/components/ui";
+import { Button, Card, PageHeader, useToast } from "@/components/ui";
 
 export default function DataPage() {
   const hydrated = useHydrated();
   const db = useDatabase();
+  const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [message, setMessage] = useState<
-    | { tone: "ok"; text: string }
-    | { tone: "err"; text: string }
-    | null
-  >(null);
 
   if (!hydrated) {
     return (
@@ -33,16 +29,16 @@ export default function DataPage() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    setMessage({ tone: "ok", text: "Backup downloaded." });
+    toast.success("Backup downloaded.");
   }
 
   async function handleImport(file: File) {
     const text = await file.text();
     const result = importAll(text);
     if (result.ok) {
-      setMessage({ tone: "ok", text: "Data imported. All households reloaded." });
+      toast.success("Data imported. All households reloaded.");
     } else {
-      setMessage({ tone: "err", text: result.error });
+      toast.error(result.error);
     }
   }
 
@@ -55,7 +51,7 @@ export default function DataPage() {
       return;
     }
     resetAll();
-    setMessage({ tone: "ok", text: "Everything has been reset." });
+    toast.success("Everything has been reset.");
   }
 
   const totals = {
@@ -99,18 +95,6 @@ export default function DataPage() {
           </div>
         </div>
       </Card>
-
-      {message ? (
-        <div
-          className={
-            message.tone === "ok"
-              ? "text-xs text-brand-deep bg-brand-mint/40 px-3 py-2 rounded-button"
-              : "text-xs text-severity-critical bg-red-50 px-3 py-2 rounded-button"
-          }
-        >
-          {message.text}
-        </div>
-      ) : null}
 
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">

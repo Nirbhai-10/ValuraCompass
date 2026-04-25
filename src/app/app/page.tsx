@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useDatabase, useHydrated } from "@/lib/store";
+import { selectHouseholds } from "@/lib/selectors";
+import { householdMetrics } from "@/lib/metrics";
 import { formatMoney } from "@/lib/format";
 import { REGION_LABELS, STRUCTURE_LABELS } from "@/lib/types";
 import { Button, Card, EmptyState, PageHeader } from "@/components/ui";
@@ -18,9 +20,7 @@ export default function HouseholdsListPage() {
     );
   }
 
-  const households = [...db.households].sort((a, b) =>
-    a.createdAt < b.createdAt ? 1 : -1,
-  );
+  const households = selectHouseholds(db);
 
   if (households.length === 0) {
     return (
@@ -52,16 +52,7 @@ export default function HouseholdsListPage() {
 
       <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {households.map((h) => {
-          const persons = db.persons.filter((p) => p.householdId === h.id).length;
-          const incomeTotal = db.incomes
-            .filter((i) => i.householdId === h.id)
-            .reduce((s, i) => s + i.amountMonthly, 0);
-          const assetTotal = db.assets
-            .filter((a) => a.householdId === h.id)
-            .reduce((s, a) => s + a.currentValue, 0);
-          const liabTotal = db.liabilities
-            .filter((l) => l.householdId === h.id)
-            .reduce((s, l) => s + l.outstanding, 0);
+          const m = householdMetrics(db, h.id);
           const fmt = (n: number) => formatMoney(n, h.currency, h.region);
           return (
             <li key={h.id}>
@@ -79,25 +70,29 @@ export default function HouseholdsListPage() {
 
                   <dl className="mt-5 grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
                     <div>
-                      <dt className="text-xs text-ink-500">People</dt>
-                      <dd className="font-semibold tabular-nums mt-0.5">{persons}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-ink-500">Income / mo</dt>
+                      <dt className="text-xs text-ink-500">Net worth</dt>
                       <dd className="font-semibold tabular-nums mt-0.5">
-                        {fmt(incomeTotal)}
+                        {fmt(m.netWorth)}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-xs text-ink-500">Assets</dt>
+                      <dt className="text-xs text-ink-500">Surplus / mo</dt>
                       <dd className="font-semibold tabular-nums mt-0.5">
-                        {fmt(assetTotal)}
+                        {fmt(m.monthlySurplus)}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-xs text-ink-500">Liabilities</dt>
+                      <dt className="text-xs text-ink-500">Cover</dt>
                       <dd className="font-semibold tabular-nums mt-0.5">
-                        {fmt(liabTotal)}
+                        {fmt(m.totalCover)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-ink-500">Emergency fund</dt>
+                      <dd className="font-semibold tabular-nums mt-0.5">
+                        {m.emergencyFundMonths > 0
+                          ? `${m.emergencyFundMonths.toFixed(1)} mo`
+                          : "—"}
                       </dd>
                     </div>
                   </dl>
