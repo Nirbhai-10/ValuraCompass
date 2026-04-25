@@ -3,7 +3,13 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { nowISO, uid, useUpdate } from "@/lib/store";
-import { HouseholdStructure, Region } from "@/lib/types";
+import {
+  HouseholdStructure,
+  REGION_LABELS,
+  Region,
+  STRUCTURE_LABELS,
+} from "@/lib/types";
+import { Button, Card, Field, Input, PageHeader, Select } from "@/components/ui";
 
 const CURRENCIES = ["INR", "AED", "USD", "EUR", "GBP", "SAR", "QAR", "OMR"] as const;
 
@@ -27,7 +33,7 @@ export default function NewHouseholdPage() {
     const primaryName = String(fd.get("primaryName") ?? "").trim();
 
     if (!name || !primaryName) {
-      setError("Please fill in the household name and the primary person.");
+      setError("Please fill in the household name and the primary person's name.");
       setSubmitting(false);
       return;
     }
@@ -66,93 +72,81 @@ export default function NewHouseholdPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
-      <div className="card">
-        <div className="px-6 py-5 border-b border-line-200">
-          <h1 className="text-xl font-semibold">Create a household</h1>
-          <p className="text-sm text-ink-500 mt-1">
-            Set the basics. You can edit everything later.
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="px-6 py-5 grid gap-5">
+    <div className="mx-auto max-w-2xl px-6 py-8 sm:py-10 space-y-6">
+      <PageHeader
+        title="Create a household"
+        subtitle="Set the basics. You can edit everything later from Settings."
+      />
+      <Card>
+        <form onSubmit={handleSubmit} className="grid gap-5">
           {error ? (
             <div className="text-xs text-severity-critical bg-red-50 px-3 py-2 rounded-button">
               {error}
             </div>
           ) : null}
 
-          <div>
-            <label className="label" htmlFor="name">Household name</label>
-            <input
+          <Field label="Household name" htmlFor="name">
+            <Input
               id="name"
-              className="input"
               name="name"
               required
-              placeholder="The Sharma family"
-              defaultValue=""
               autoFocus
+              placeholder="e.g. The Sharma family"
             />
-          </div>
+          </Field>
 
           <div className="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label" htmlFor="region">Region</label>
-              <select id="region" name="region" className="input" defaultValue="IN">
-                <option value="IN">India</option>
-                <option value="GCC">GCC</option>
-                <option value="GLOBAL">Global</option>
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="currency">Currency</label>
-              <select id="currency" name="currency" className="input" defaultValue="INR">
+            <Field label="Region" htmlFor="region">
+              <Select id="region" name="region" defaultValue="IN">
+                {Object.keys(REGION_LABELS).map((r) => (
+                  <option key={r} value={r}>
+                    {REGION_LABELS[r as Region]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Currency" htmlFor="currency">
+              <Select id="currency" name="currency" defaultValue="INR">
                 {CURRENCIES.map((c) => (
                   <option key={c}>{c}</option>
                 ))}
-              </select>
-            </div>
+              </Select>
+            </Field>
           </div>
 
-          <div>
-            <label className="label" htmlFor="structure">Structure</label>
-            <select id="structure" name="structure" className="input" defaultValue="NUCLEAR">
-              <option value="SINGLE">Single</option>
-              <option value="DINK">Couple, no kids</option>
-              <option value="NUCLEAR">Nuclear (you + spouse + kids)</option>
-              <option value="NUCLEAR_WITH_PARENTS">Nuclear with parents</option>
-              <option value="JOINT">Joint family</option>
-              <option value="SINGLE_PARENT">Single parent</option>
-              <option value="MULTI_GEN">Multi-generational</option>
-              <option value="CROSS_BORDER">Cross-border</option>
-            </select>
-          </div>
+          <Field label="Structure" htmlFor="structure">
+            <Select id="structure" name="structure" defaultValue="NUCLEAR">
+              {(Object.keys(STRUCTURE_LABELS) as HouseholdStructure[]).map((s) => (
+                <option key={s} value={s}>
+                  {STRUCTURE_LABELS[s]}
+                </option>
+              ))}
+            </Select>
+          </Field>
 
-          <div>
-            <label className="label" htmlFor="primaryName">Primary person&apos;s name</label>
-            <input
+          <Field
+            label="Primary person's name"
+            hint="The person whose financial picture this primarily represents."
+            htmlFor="primaryName"
+          >
+            <Input
               id="primaryName"
-              className="input"
               name="primaryName"
               required
               placeholder="e.g. Rohan Sharma"
             />
-          </div>
+          </Field>
 
           <div className="flex items-center gap-3 pt-2">
-            <button className="btn-primary" type="submit" disabled={submitting}>
+            <Button variant="primary" type="submit" disabled={submitting}>
               {submitting ? "Creating…" : "Create household"}
-            </button>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={() => router.push("/app")}
-            >
+            </Button>
+            <Button variant="ghost" type="button" onClick={() => router.push("/app")}>
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
-      </div>
+      </Card>
     </div>
   );
 }

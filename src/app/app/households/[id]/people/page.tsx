@@ -1,9 +1,21 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent } from "react";
 import { useParams } from "next/navigation";
 import { useDatabase, useUpdate, uid } from "@/lib/store";
-import { PERSON_RELATIONS } from "@/lib/types";
+import { PERSON_RELATIONS, Person } from "@/lib/types";
+import {
+  Button,
+  Dialog,
+  EmptyState,
+  EntityList,
+  EntityRow,
+  Field,
+  Input,
+  Select,
+  PageHeader,
+  useDialog,
+} from "@/components/ui";
 
 export default function PeoplePage() {
   const params = useParams<{ id: string }>();
@@ -11,10 +23,9 @@ export default function PeoplePage() {
   const db = useDatabase();
   const update = useUpdate();
   const persons = db.persons.filter((p) => p.householdId === householdId);
+  const dialog = useDialog<Person>();
 
-  const [open, setOpen] = useState(false);
-
-  function handleAdd(e: FormEvent<HTMLFormElement>) {
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const fullName = String(fd.get("fullName") ?? "").trim();
@@ -22,26 +33,37 @@ export default function PeoplePage() {
     const dob = String(fd.get("dob") ?? "").trim();
     if (!fullName) return;
 
-    update((curr) => ({
-      ...curr,
-      persons: [
-        ...curr.persons,
-        {
-          id: uid("p"),
-          householdId,
-          fullName,
-          relation,
-          dob: dob || undefined,
-          isPrimary: false,
-        },
-      ],
-    }));
-
-    e.currentTarget.reset();
-    setOpen(false);
+    update((curr) => {
+      if (dialog.item) {
+        return {
+          ...curr,
+          persons: curr.persons.map((p) =>
+            p.id === dialog.item!.id
+              ? { ...p, fullName, relation, dob: dob || undefined }
+              : p,
+          ),
+        };
+      }
+      return {
+        ...curr,
+        persons: [
+          ...curr.persons,
+          {
+            id: uid("p"),
+            householdId,
+            fullName,
+            relation,
+            dob: dob || undefined,
+            isPrimary: false,
+          },
+        ],
+      };
+    });
+    dialog.close();
   }
 
-  function handleRemove(personId: string) {
+  function handleDelete(personId: string) {
+    if (!window.confirm("Remove this person?")) return;
     update((curr) => ({
       ...curr,
       persons: curr.persons.filter((p) => p.id !== personId),
@@ -52,80 +74,91 @@ export default function PeoplePage() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">People</h2>
-          <p className="text-sm text-ink-500 mt-1">
-            Family members and dependents in this household.
-          </p>
-        </div>
-        {!open ? (
-          <button onClick={() => setOpen(true)} className="btn-primary text-sm">
+    <div className="space-y-6">
+      <PageHeader
+        title="People"
+        subtitle="Family members and dependents in this household."
+        action={
+          <Button variant="primary" onClick={() => dialog.openFor(null)}>
             Add person
-          </button>
-        ) : null}
-      </div>
-
-      {open ? (
-        <form onSubmit={handleAdd} className="card card-pad grid gap-4 sm:grid-cols-3">
-          <div className="sm:col-span-2">
-            <label className="label">Full name</label>
-            <input className="input" name="fullName" required autoFocus />
-          </div>
-          <div>
-            <label className="label">Relation</label>
-            <select className="input" name="relation" defaultValue="Spouse">
-              {PERSON_RELATIONS.map((r) => (
-                <option key={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">Date of birth (optional)</label>
-            <input className="input" name="dob" type="date" />
-          </div>
-          <div className="sm:col-span-3 flex gap-2">
-            <button className="btn-primary text-sm" type="submit">
-              Save person
-            </button>
-            <button type="button" className="btn-ghost text-sm" onClick={() => setOpen(false)}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : null}
+          </Button>
+        }
+      />
 
       {persons.length === 0 ? (
-        <div className="card card-pad text-center text-sm text-ink-500">
-          No one added yet. Add your first person above.
-        </div>
+        <EmptyState
+          title="No one yet"
+          description="Add the primary person and anyone else who shares this financial picture."
+          action={
+            <Button variant="primary" onClick={() => dialog.openFor(null)}>
+              Add the first person
+            </Button>
+          }
+        />
       ) : (
-        <ul className="card divide-y divide-line-100">
+        <EntityList>
           {persons.map((p) => (
-            <li
+            <EntityRow
               key={p.id}
-              className="px-5 py-4 flex items-center justify-between gap-3"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{p.fullName}</p>
-                <p className="text-xs text-ink-500 mt-0.5">
+              primary={p.fullName}
+              secondary={
+                <>
                   {p.relation}
                   {p.isPrimary ? " · primary" : ""}
                   {p.dob ? ` · DOB ${p.dob}` : ""}
-                </p>
-              </div>
-              {!p.isPrimary ? (
-                <button onClick={() => handleRemove(p.id)} className="btn-danger text-xs">
-                  Remove
-                </button>
-              ) : (
-                <span className="chip">Primary</span>
-              )}
-            </li>
+                </>
+              }
+              onEdit={() => dialog.openFor(p)}
+              onDelete={p.isPrimary ? undefined : () => handleDelete(p.id)}
+            />
           ))}
-        </ul>
+        </EntityList>
       )}
+
+      <Dialog
+        open={dialog.open}
+        onClose={dialog.close}
+        title={dialog.item ? "Edit person" : "Add a person"}
+        description={
+          dialog.item
+            ? "Update the details for this person."
+            : "Track another family member or dependent."
+        }
+      >
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <Field label="Full name" htmlFor="fullName">
+            <Input
+              id="fullName"
+              name="fullName"
+              required
+              autoFocus
+              defaultValue={dialog.item?.fullName ?? ""}
+            />
+          </Field>
+          <Field label="Relation" htmlFor="relation">
+            <Select
+              id="relation"
+              name="relation"
+              defaultValue={dialog.item?.relation ?? "Spouse"}
+            >
+              {PERSON_RELATIONS.map((r) => (
+                <option key={r}>{r}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Date of birth" hint="Optional, but helps later." htmlFor="dob">
+            <Input id="dob" name="dob" type="date" defaultValue={dialog.item?.dob ?? ""} />
+          </Field>
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={dialog.close} type="button">
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit">
+              {dialog.item ? "Save changes" : "Add person"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }

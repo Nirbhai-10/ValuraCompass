@@ -1,14 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { Database, EMPTY_DB } from "./types";
 
 const STORAGE_KEY = "compass-data-v1";
+const SCHEMA_VERSION = 1;
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
 let cache: Database | null = null;
+
+interface Envelope {
+  version: number;
+  data: Database;
+}
 
 function read(): Database {
   if (typeof window === "undefined") return EMPTY_DB;
@@ -19,8 +25,12 @@ function read(): Database {
       cache = { ...EMPTY_DB };
       return cache;
     }
-    const parsed = JSON.parse(raw) as Partial<Database>;
-    cache = { ...EMPTY_DB, ...parsed };
+    const parsed = JSON.parse(raw) as Partial<Envelope> | Partial<Database>;
+    const data: Partial<Database> =
+      typeof parsed === "object" && parsed !== null && "data" in parsed
+        ? ((parsed as Envelope).data ?? {})
+        : (parsed as Partial<Database>);
+    cache = { ...EMPTY_DB, ...data };
     return cache;
   } catch {
     cache = { ...EMPTY_DB };
@@ -32,7 +42,8 @@ function write(next: Database): void {
   cache = next;
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      const envelope: Envelope = { version: SCHEMA_VERSION, data: next };
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(envelope));
     } catch {
       // ignore quota / private mode errors
     }
@@ -53,7 +64,9 @@ export function useDatabase(): Database {
   return useSyncExternalStore(subscribe, read, () => SERVER_SNAPSHOT);
 }
 
-export function useUpdate(): (mutator: (db: Database) => Database) => void {
+export type Mutator = (db: Database) => Database;
+
+export function useUpdate(): (mutator: Mutator) => void {
   return useCallback((mutator) => {
     const next = mutator(read());
     write(next);
@@ -61,13 +74,11 @@ export function useUpdate(): (mutator: (db: Database) => Database) => void {
 }
 
 export function useHydrated(): boolean {
-  // Returns true after the first client render so server-only renders skip data-dependent UI.
-  const value = useSyncExternalStore(
+  return useSyncExternalStore(
     subscribe,
     () => true,
     () => false,
   );
-  return value;
 }
 
 export function uid(prefix = "id"): string {
@@ -80,6 +91,33 @@ export function nowISO(): string {
   return new Date().toISOString();
 }
 
+export function exportAll(): string {
+  const data = read();
+  const envelope: Envelope = { version: SCHEMA_VERSION, data };
+  return JSON.stringify(envelope, null, 2);
+}
+
+export function importAll(text: string): { ok: true } | { ok: false; error: string } {
+  try {
+    const parsed = JSON.parse(text);
+    const data: Partial<Database> =
+      typeof parsed === "object" && parsed !== null && "data" in parsed
+        ? (parsed as Envelope).data
+        : (parsed as Partial<Database>);
+    if (!data || typeof data !== "object") {
+      return { ok: false, error: "Invalid file: not a Compass export." };
+    }
+    write({ ...EMPTY_DB, ...data });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message || "Could not parse JSON." };
+  }
+}
+
+export function resetAll(): void {
+  write({ ...EMPTY_DB });
+}
+
 // Cross-tab sync
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
@@ -88,12 +126,4 @@ if (typeof window !== "undefined") {
       listeners.forEach((fn) => fn());
     }
   });
-}
-
-// React hook to listen for hydration completion (used to avoid hydration mismatches).
-export function useClientEffect(fn: () => void, deps: ReadonlyArray<unknown>): void {
-  useEffect(() => {
-    fn();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
 }

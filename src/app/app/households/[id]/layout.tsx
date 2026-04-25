@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { HouseholdNav } from "@/components/household-nav";
-import { useDatabase, useHydrated, useUpdate } from "@/lib/store";
+import { useDatabase, useHydrated } from "@/lib/store";
 import { REGION_LABELS, STRUCTURE_LABELS } from "@/lib/types";
 
 export default function HouseholdLayout({ children }: { children: React.ReactNode }) {
@@ -13,7 +13,6 @@ export default function HouseholdLayout({ children }: { children: React.ReactNod
   const id = params?.id;
   const hydrated = useHydrated();
   const db = useDatabase();
-  const update = useUpdate();
   const household = id ? db.households.find((h) => h.id === id) : undefined;
 
   useEffect(() => {
@@ -22,54 +21,37 @@ export default function HouseholdLayout({ children }: { children: React.ReactNod
     }
   }, [hydrated, id, household, router]);
 
-  if (!hydrated || !household) {
+  if (!hydrated) {
     return (
-      <div className="mx-auto max-w-6xl p-6">
+      <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="h-32 animate-pulse rounded-card bg-white border border-line-200" />
       </div>
     );
   }
 
-  function handleDelete() {
-    if (!household) return;
-    const ok = window.confirm(`Delete "${household.name}" and all its data? This cannot be undone.`);
-    if (!ok) return;
-    update((curr) => ({
-      ...curr,
-      households: curr.households.filter((h) => h.id !== household.id),
-      persons: curr.persons.filter((p) => p.householdId !== household.id),
-      incomes: curr.incomes.filter((i) => i.householdId !== household.id),
-      expenses: curr.expenses.filter((e) => e.householdId !== household.id),
-      assets: curr.assets.filter((a) => a.householdId !== household.id),
-      liabilities: curr.liabilities.filter((l) => l.householdId !== household.id),
-      policies: curr.policies.filter((p) => p.householdId !== household.id),
-      goals: curr.goals.filter((g) => g.householdId !== household.id),
-    }));
-    router.push("/app");
+  if (!household) {
+    return null;
   }
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
-        <div className="min-w-0">
-          <p className="text-xs text-ink-500">
-            <Link href="/app" className="link">Households</Link>
-            <span className="mx-1.5">/</span>
-            <span>{household.name}</span>
-          </p>
-          <h1 className="text-2xl font-semibold mt-1 truncate">{household.name}</h1>
-          <p className="text-xs text-ink-500 mt-1">
-            {REGION_LABELS[household.region]} · {household.currency} ·{" "}
-            {STRUCTURE_LABELS[household.structure]}
-          </p>
-        </div>
-        <button onClick={handleDelete} className="btn-danger text-sm">
-          Delete household
-        </button>
+    <div className="mx-auto max-w-6xl px-6 py-8 sm:py-10">
+      <div className="mb-8">
+        <p className="text-xs text-ink-500">
+          <Link href="/app" className="link">
+            Households
+          </Link>
+          <span className="mx-1.5">/</span>
+          <span className="text-ink-700">{household.name}</span>
+        </p>
+        <h1 className="text-3xl font-semibold tracking-tight mt-2">{household.name}</h1>
+        <p className="text-sm text-ink-500 mt-1.5">
+          {REGION_LABELS[household.region]} · {household.currency} ·{" "}
+          {STRUCTURE_LABELS[household.structure]}
+        </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
-        <aside className="lg:sticky lg:top-4 self-start">
+      <div className="grid gap-8 lg:grid-cols-[220px_1fr]">
+        <aside className="lg:sticky lg:top-6 self-start">
           <HouseholdNav householdId={household.id} />
         </aside>
         <section className="min-w-0">{children}</section>
