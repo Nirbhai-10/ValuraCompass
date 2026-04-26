@@ -20,6 +20,12 @@ import { Severity, buildInsights } from "@/lib/insights";
 import { allScores, bandTone } from "@/lib/scores";
 import { formatMoney } from "@/lib/format";
 import { Breakdown } from "@/components/breakdown";
+import {
+  CashFlowBar,
+  Donut,
+  DonutLegend,
+  ScoreRing,
+} from "@/components/charts";
 import { Card, Kpi } from "@/components/ui";
 
 const SEVERITY_CLASSES: Record<Severity, string> = {
@@ -139,7 +145,7 @@ export default function HouseholdOverviewPage() {
 
       {scores.length > 0 ? (
         <Card>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="text-sm font-semibold">Plan scores</h3>
               <p className="text-xs text-ink-500 mt-0.5">
@@ -154,35 +160,24 @@ export default function HouseholdOverviewPage() {
               See observations →
             </Link>
           </div>
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {scores.map((s) => {
-              const tone = bandTone(s.band);
-              const ring =
-                tone === "positive"
-                  ? "ring-brand-deep/30 bg-brand-mint/30"
-                  : tone === "warn"
-                    ? "ring-amber-200 bg-amber-50"
-                    : tone === "danger"
-                      ? "ring-red-200 bg-red-50"
-                      : "ring-line-200";
-              return (
-                <li
-                  key={s.id}
-                  className={`border border-line-200 rounded-button px-4 py-3 ring-1 ${ring}`}
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-xs text-ink-500">{s.label}</p>
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-700">
-                      {s.band}
-                    </span>
-                  </div>
-                  <p className="text-2xl font-semibold tabular-nums mt-1">{s.value}</p>
-                  <p className="text-xs text-ink-500 mt-1 leading-relaxed">
-                    {s.narrative}
-                  </p>
-                </li>
-              );
-            })}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {scores.map((s) => (
+              <ScoreRing
+                key={s.id}
+                value={s.value}
+                label={s.label}
+                band={s.band}
+                tone={bandTone(s.band)}
+              />
+            ))}
+          </div>
+          <ul className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 text-xs">
+            {scores.map((s) => (
+              <li key={s.id} className="text-ink-500 leading-relaxed">
+                <span className="font-semibold text-ink-700">{s.label}.</span>{" "}
+                {s.narrative}
+              </li>
+            ))}
           </ul>
         </Card>
       ) : null}
@@ -234,11 +229,18 @@ export default function HouseholdOverviewPage() {
         <Card>
           <h3 className="text-sm font-semibold mb-1">Asset allocation</h3>
           <p className="text-xs text-ink-500 mb-4">Where your wealth lives, by class.</p>
-          <Breakdown
-            slices={assetSlices}
-            format={fmt}
-            emptyMessage="Add assets to see your allocation."
-          />
+          {assetSlices.length > 0 ? (
+            <div className="grid grid-cols-[auto_1fr] gap-5 items-center">
+              <Donut
+                slices={assetSlices}
+                centerLabel="Total"
+                centerValue={fmt(m.totalAssets).replace("₹", "₹")}
+              />
+              <DonutLegend slices={assetSlices} format={fmt} />
+            </div>
+          ) : (
+            <p className="text-sm text-ink-500">Add assets to see your allocation.</p>
+          )}
         </Card>
         <Card>
           <h3 className="text-sm font-semibold mb-1">Where the money goes</h3>
@@ -250,6 +252,14 @@ export default function HouseholdOverviewPage() {
           />
         </Card>
       </div>
+
+      <Card>
+        <h3 className="text-sm font-semibold mb-1">Monthly cash flow</h3>
+        <p className="text-xs text-ink-500 mb-4">
+          Income vs. expense, with the surplus (or deficit) called out.
+        </p>
+        <CashFlowBar income={m.monthlyIncome} expense={m.monthlyExpense} format={fmt} />
+      </Card>
 
       {upcomingGoals.length > 0 ? (
         <Card>

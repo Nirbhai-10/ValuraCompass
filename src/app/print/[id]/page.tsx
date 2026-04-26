@@ -96,7 +96,7 @@ export default function PrintReportPage() {
   return (
     <main className="mx-auto max-w-4xl p-6 sm:p-10 print:p-0 print:max-w-none print:bg-white">
       <header className="flex items-center justify-between gap-4 print:mb-6">
-        <CompassLogo />
+        <CompassLogo height={48} />
         <div className="flex items-center gap-2 no-print">
           <Link
             href={`/app/households/${id}`}

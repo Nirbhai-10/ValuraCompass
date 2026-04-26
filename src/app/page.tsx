@@ -20,11 +20,11 @@ export default function LandingPage() {
   return (
     <main className="min-h-screen flex flex-col">
       <header className="border-b border-line-200 bg-white">
-        <div className="mx-auto max-w-5xl px-6 h-14 flex items-center justify-between">
-          <CompassLogo />
+        <div className="mx-auto max-w-5xl px-6 h-20 flex items-center justify-between">
+          <CompassLogo height={48} />
           <Link
             href="/app"
-            className="inline-flex h-8 px-3 items-center rounded-button text-sm text-ink-700 hover:text-brand-deep hover:bg-brand-mint/40"
+            className="inline-flex h-9 px-4 items-center rounded-button text-sm font-medium text-ink-700 hover:text-brand-deep hover:bg-brand-mint/40"
           >
             Open app →
           </Link>

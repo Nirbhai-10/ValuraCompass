@@ -374,9 +374,28 @@ export function buildDemoDatabase(): Database {
       {
         householdId: hhId,
         regime: "NEW",
-        businessIncomeShare: 0.25,
+        inputs: {
+          // Modeled around Rohan's filing (primary). Priya files separately under the
+          // presumptive scheme as a professional and isn't included in this profile.
+          salary: 3360000, // 2.8L/mo × 12
+          businessIncome: 0,
+          housePropertyIncome: 151200, // 18k/mo × 12 net of 30% standard
+          otherIncome: 96000, // dividends 8k/mo × 12
+          isSalaried: true,
+          hraExempt: 600000,
+          ltaExempt: 0,
+          professionalTax: 2400,
+          d80C: 150000,
+          d80CCD1B: 50000,
+          d80D: 47000, // 22k family floater + 25k for senior-citizen parents
+          d24bHomeLoan: 0,
+          d80E: 0,
+          d80G: 0,
+          d80TTA: 10000,
+          employerNPS80CCD2: 0,
+        },
         notes:
-          "Priya files as a professional under the presumptive scheme; Rohan's RSU vesting handled via salaried TDS.",
+          "Rohan's filing. Priya files separately as a professional under the presumptive scheme.",
         updatedAt: now,
       },
     ],

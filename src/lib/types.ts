@@ -117,10 +117,29 @@ export interface RiskProfile {
 
 export type TaxRegime = "OLD" | "NEW" | "NA";
 
+export interface TaxInputs {
+  salary: number;
+  businessIncome: number;
+  housePropertyIncome: number;
+  otherIncome: number;
+  isSalaried: boolean;
+  hraExempt: number;
+  ltaExempt: number;
+  professionalTax: number;
+  d80C: number;
+  d80CCD1B: number;
+  d80D: number;
+  d24bHomeLoan: number;
+  d80E: number;
+  d80G: number;
+  d80TTA: number;
+  employerNPS80CCD2: number;
+}
+
 export interface TaxProfile {
   householdId: string;
   regime: TaxRegime;
-  businessIncomeShare?: number; // 0..1
+  inputs?: TaxInputs;
   notes?: string;
   updatedAt: string;
 }

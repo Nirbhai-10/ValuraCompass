@@ -27,7 +27,7 @@ export function CompassLogo({
   variant = "gradient",
   iconOnly,
   className,
-  height = 28,
+  height = 38,
 }: LogoProps) {
   if (iconOnly) {
     return <CompassMark className={className} size={height} variant={variant} />;
