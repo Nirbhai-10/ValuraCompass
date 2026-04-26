@@ -145,29 +145,37 @@ export function Donut({
 interface DonutLegendProps {
   slices: DonutSlice[];
   format: (n: number) => string;
+  /** Optional second formatter used when the row is tight (e.g. compact). */
+  formatCompact?: (n: number) => string;
 }
 
-export function DonutLegend({ slices, format }: DonutLegendProps) {
+export function DonutLegend({ slices, format, formatCompact }: DonutLegendProps) {
   const cleaned = slices.filter((s) => s.value > 0);
   const total = cleaned.reduce((s, x) => s + x.value, 0);
+  const fmt = formatCompact ?? format;
   return (
-    <ul className="grid gap-1.5 text-sm">
+    <ul className="grid gap-1.5 text-sm min-w-0">
       {cleaned
         .sort((a, b) => b.value - a.value)
         .map((s, i) => {
           const pct = total > 0 ? (s.value / total) * 100 : 0;
           return (
-            <li key={s.key} className="flex items-center justify-between gap-3">
-              <span className="flex items-center gap-2 min-w-0">
+            <li
+              key={s.key}
+              className="flex items-center justify-between gap-3 min-w-0"
+            >
+              <span className="flex items-center gap-2 min-w-0 flex-1">
                 <span
                   className="inline-block size-2.5 rounded-full shrink-0"
                   style={{ background: PALETTE[i % PALETTE.length] }}
                 />
                 <span className="text-ink-700 truncate">{s.label}</span>
               </span>
-              <span className="text-ink-700 font-medium tabular-nums whitespace-nowrap">
-                {format(s.value)}{" "}
-                <span className="text-ink-500 font-normal">{pct.toFixed(0)}%</span>
+              <span className="text-ink-700 font-medium tabular-nums whitespace-nowrap shrink-0">
+                {fmt(s.value)}
+                <span className="text-ink-500 font-normal ml-1.5">
+                  {pct.toFixed(0)}%
+                </span>
               </span>
             </li>
           );

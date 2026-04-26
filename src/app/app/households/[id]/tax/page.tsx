@@ -10,10 +10,13 @@ import {
   EMPTY_TAX_INPUTS,
   NEW_REGIME_SLABS,
   OLD_REGIME_SLABS,
+  OptimizationSeverity,
   Regime,
   SECTION_HINTS,
   TaxBreakdown,
+  TaxOptimization,
   compareRegimes,
+  suggestOptimizations,
 } from "@/lib/india-tax";
 import { formatMoney, parseAmount } from "@/lib/format";
 import {
@@ -93,6 +96,10 @@ export default function TaxPage() {
   const [regime, setRegime] = useState<TaxRegime>(profile?.regime ?? "NEW");
 
   const compare = useMemo(() => compareRegimes(inputs), [inputs]);
+  const optimizations = useMemo(
+    () => suggestOptimizations(inputs, regime === "NA" ? "NEW" : regime),
+    [inputs, regime],
+  );
 
   if (!household) return null;
   const fmt = (n: number) => formatMoney(n, household.currency, household.region);
@@ -199,6 +206,31 @@ export default function TaxPage() {
 
       {isIN ? (
         <RegimeComparison compare={compare} fmt={fmt} regime={regime} />
+      ) : null}
+
+      {isIN && optimizations.length > 0 ? (
+        <Card>
+          <div className="flex items-center justify-between mb-1">
+            <div>
+              <h3 className="text-sm font-semibold">Tax optimisation</h3>
+              <p className="text-xs text-ink-500 mt-0.5">
+                Practical, regime-aware moves that you can actually make this year.
+                Estimated savings are computed by re-running the engine with each
+                suggestion applied to your selected regime ({regime}).
+              </p>
+            </div>
+          </div>
+          <ul className="mt-4 grid gap-3">
+            {optimizations.map((o) => (
+              <OptimizationItem key={o.id} item={o} fmt={fmt} />
+            ))}
+          </ul>
+          <p className="text-[11px] text-ink-500 mt-4 pt-3 border-t border-line-100">
+            Suggestions are based only on your inputs. We don't fabricate deductions
+            (e.g. health-insurance) you haven't entered, and we don't recommend
+            taking on new debt for the home-loan interest deduction.
+          </p>
+        </Card>
       ) : null}
 
       {isIN ? (
@@ -475,6 +507,60 @@ function Row({
         {value}
       </dd>
     </>
+  );
+}
+
+const SEVERITY_CLASSES: Record<OptimizationSeverity, string> = {
+  HIGH: "bg-brand-mint/70 text-brand-deep border-transparent",
+  MEDIUM: "bg-amber-50 text-severity-medium border-amber-100",
+  LOW: "bg-cyan-50 text-severity-low border-cyan-100",
+  INFO: "bg-line-100 text-ink-700 border-line-200",
+};
+
+const REGIME_LABEL: Record<TaxOptimization["applicableRegime"], string> = {
+  OLD: "Old regime",
+  NEW: "New regime",
+  BOTH: "Both regimes",
+};
+
+function OptimizationItem({
+  item,
+  fmt,
+}: {
+  item: TaxOptimization;
+  fmt: (n: number) => string;
+}) {
+  return (
+    <li className="border border-line-200 rounded-button px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={cn(
+                "inline-flex items-center px-2 h-5 rounded-full text-[10px] font-semibold uppercase tracking-wide border",
+                SEVERITY_CLASSES[item.severity],
+              )}
+            >
+              {item.severity}
+            </span>
+            <span className="text-[11px] text-ink-500">
+              {REGIME_LABEL[item.applicableRegime]}
+            </span>
+          </div>
+          <p className="text-sm font-semibold mt-1.5">{item.title}</p>
+          <p className="text-sm text-ink-700 mt-1 leading-relaxed">{item.body}</p>
+          <p className="text-sm text-ink-900 mt-1.5">
+            <span className="font-medium">Action:</span> {item.action}
+          </p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-[11px] text-ink-500">Approx. saving</p>
+          <p className="text-base font-semibold text-brand-deep tabular-nums">
+            {fmt(item.expectedSavings)}
+          </p>
+        </div>
+      </div>
+    </li>
   );
 }
 

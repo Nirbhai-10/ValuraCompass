@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { loadDemoData, useDatabase, useHydrated } from "@/lib/store";
 import { selectHouseholds } from "@/lib/selectors";
 import { householdMetrics } from "@/lib/metrics";
-import { formatMoney } from "@/lib/format";
+import { formatMoneyCompact } from "@/lib/format";
 import { MODE_LABELS, REGION_LABELS, STRUCTURE_LABELS } from "@/lib/types";
 import { Button, Card, EmptyState, PageHeader, useToast } from "@/components/ui";
 
@@ -74,7 +74,7 @@ export default function HouseholdsListPage() {
       <ul className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {households.map((h) => {
           const m = householdMetrics(db, h.id);
-          const fmt = (n: number) => formatMoney(n, h.currency, h.region);
+          const fmt = (n: number) => formatMoneyCompact(n, h.currency, h.region);
           return (
             <li key={h.id}>
               <Link

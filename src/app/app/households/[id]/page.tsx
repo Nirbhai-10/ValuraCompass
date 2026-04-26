@@ -18,7 +18,7 @@ import {
 } from "@/lib/metrics";
 import { Severity, buildInsights } from "@/lib/insights";
 import { allScores, bandTone } from "@/lib/scores";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatMoneyCompact } from "@/lib/format";
 import { Breakdown } from "@/components/breakdown";
 import {
   CashFlowBar,
@@ -49,6 +49,8 @@ export default function HouseholdOverviewPage() {
 
   if (!household) return null;
   const fmt = (n: number) => formatMoney(n, household.currency, household.region);
+  const fmtCompact = (n: number) =>
+    formatMoneyCompact(n, household.currency, household.region);
 
   if (isHouseholdEmpty(db, id)) {
     return (
@@ -97,7 +99,7 @@ export default function HouseholdOverviewPage() {
         <Kpi
           title="Net worth"
           value={fmt(m.netWorth)}
-          sub={`${fmt(m.totalAssets)} − ${fmt(m.totalLiabilities)}`}
+          sub={`${fmtCompact(m.totalAssets)} − ${fmtCompact(m.totalLiabilities)}`}
           tone={m.netWorth >= 0 ? "positive" : "danger"}
         />
         <Kpi
@@ -230,13 +232,22 @@ export default function HouseholdOverviewPage() {
           <h3 className="text-sm font-semibold mb-1">Asset allocation</h3>
           <p className="text-xs text-ink-500 mb-4">Where your wealth lives, by class.</p>
           {assetSlices.length > 0 ? (
-            <div className="grid grid-cols-[auto_1fr] gap-5 items-center">
-              <Donut
-                slices={assetSlices}
-                centerLabel="Total"
-                centerValue={fmt(m.totalAssets).replace("₹", "₹")}
-              />
-              <DonutLegend slices={assetSlices} format={fmt} />
+            <div className="flex items-center gap-5 min-w-0">
+              <div className="shrink-0">
+                <Donut
+                  slices={assetSlices}
+                  centerLabel="Total"
+                  centerValue={fmtCompact(m.totalAssets)}
+                  size={140}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <DonutLegend
+                  slices={assetSlices}
+                  format={fmtCompact}
+                  formatCompact={fmtCompact}
+                />
+              </div>
             </div>
           ) : (
             <p className="text-sm text-ink-500">Add assets to see your allocation.</p>
@@ -247,7 +258,7 @@ export default function HouseholdOverviewPage() {
           <p className="text-xs text-ink-500 mb-4">Monthly outflow by category.</p>
           <Breakdown
             slices={expenseSlices}
-            format={fmt}
+            format={fmtCompact}
             emptyMessage="Add expenses to see a breakdown."
           />
         </Card>
@@ -281,12 +292,12 @@ export default function HouseholdOverviewPage() {
             {upcomingGoals.map(({ goal, funded, pct, yearsAway }) => (
               <li
                 key={goal.id}
-                className="border border-line-200 rounded-button px-4 py-3"
+                className="border border-line-200 rounded-button px-4 py-3 min-w-0"
               >
                 <div className="flex items-baseline justify-between gap-3">
-                  <p className="text-sm font-medium truncate">{goal.label}</p>
-                  <p className="text-sm font-semibold tabular-nums whitespace-nowrap">
-                    {fmt(goal.targetAmount)}
+                  <p className="text-sm font-medium truncate min-w-0">{goal.label}</p>
+                  <p className="text-sm font-semibold tabular-nums whitespace-nowrap shrink-0">
+                    {fmtCompact(goal.targetAmount)}
                   </p>
                 </div>
                 <p className="text-xs text-ink-500 mt-0.5">
@@ -296,7 +307,7 @@ export default function HouseholdOverviewPage() {
                     : goal.targetYear}
                 </p>
                 <div className="mt-3 flex items-baseline justify-between text-xs text-ink-500">
-                  <span>{fmt(funded)} funded</span>
+                  <span>{fmtCompact(funded)} funded</span>
                   <span className="text-ink-700 font-medium">
                     {(pct * 100).toFixed(0)}%
                   </span>

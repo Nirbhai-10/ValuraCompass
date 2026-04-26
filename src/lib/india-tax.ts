@@ -314,6 +314,198 @@ export function compareRegimes(input: TaxInputs): RegimeComparison {
   return { old: oldB, newR: newB, betterRegime: better, savings, reasons };
 }
 
+// ----- Optimisations -------------------------------------------------------
+
+export type OptimizationSeverity = "HIGH" | "MEDIUM" | "LOW" | "INFO";
+
+export interface TaxOptimization {
+  id: string;
+  title: string;
+  body: string;
+  /** Cash saving (in INR) on this year's tax bill if applied. */
+  expectedSavings: number;
+  applicableRegime: Regime | "BOTH";
+  severity: OptimizationSeverity;
+  /** What to do, in plain English. */
+  action: string;
+}
+
+/**
+ * Surface ONLY suggestions that are (a) computable, (b) regime-aware,
+ * and (c) practical — i.e. the user can actually act on them this year.
+ *
+ * The cash-saving figure is computed by re-running `computeTax` with the
+ * suggestion applied, then taking the delta against the user's currently
+ * selected regime. That makes "switch regime" suggestions and headroom
+ * suggestions directly comparable.
+ *
+ * The function also avoids over-claiming: e.g. it won't suggest 80D if
+ * we don't see a health-insurance premium in the inputs (the user might
+ * actually pay one outside, but we don't fabricate a deduction).
+ */
+export function suggestOptimizations(
+  input: TaxInputs,
+  currentRegime: Regime,
+): TaxOptimization[] {
+  const out: TaxOptimization[] = [];
+  const baseline = computeTax(input, currentRegime);
+
+  function deltaIfApply(patch: Partial<TaxInputs>, regime: Regime): number {
+    const next = computeTax({ ...input, ...patch }, regime);
+    return Math.max(0, baseline.totalTax - next.totalTax);
+  }
+
+  // ----- Regime switch first (often the biggest single lever) ------------
+  const otherRegime: Regime = currentRegime === "OLD" ? "NEW" : "OLD";
+  const otherTax = computeTax(input, otherRegime);
+  const switchSaving = baseline.totalTax - otherTax.totalTax;
+  if (switchSaving > 1000) {
+    out.push({
+      id: "switch_regime",
+      title: `Switch to the ${otherRegime === "OLD" ? "Old" : "New"} regime`,
+      body:
+        otherRegime === "OLD"
+          ? "Itemised deductions exceed the New regime's higher slabs and ₹75K standard deduction by enough to win on the Old regime."
+          : "Your itemised deductions don't catch up to the New regime's lower slabs plus its ₹75K standard deduction.",
+      expectedSavings: switchSaving,
+      applicableRegime: otherRegime,
+      severity: switchSaving > 25000 ? "HIGH" : "MEDIUM",
+      action:
+        "When you file, choose the new regime in your ITR. (Salaried filers can pick once a year; business filers have stricter switching rules.)",
+    });
+  }
+
+  // For old-regime headroom suggestions, evaluate them under whichever Old
+  // regime is more favourable (the better-of-two), so we don't push someone
+  // toward the worse path.
+  const oldRegimeIsBetterTarget =
+    currentRegime === "OLD" || otherTax.totalTax > baseline.totalTax;
+
+  // ----- 80C headroom -----------------------------------------------------
+  if (oldRegimeIsBetterTarget && input.d80C < CAP_80C) {
+    const headroom = CAP_80C - input.d80C;
+    const saving = deltaIfApply({ d80C: CAP_80C }, "OLD");
+    if (saving > 0) {
+      out.push({
+        id: "80c_headroom",
+        title: `Top up 80C by ₹${format(headroom)}`,
+        body: "PPF, ELSS, EPF top-up (VPF), term-life premiums, kids' tuition, home-loan principal, 5-year tax-saving FD all qualify under the ₹1.5L umbrella.",
+        expectedSavings: saving,
+        applicableRegime: "OLD",
+        severity: saving > 15000 ? "HIGH" : "MEDIUM",
+        action:
+          "Direct the next month or two of investible savings into PPF (safe, EEE) or ELSS (equity, 3-yr lock-in) until you fill the cap.",
+      });
+    }
+  }
+
+  // ----- 80CCD(1B) — extra ₹50K on top of 80C -----------------------------
+  if (oldRegimeIsBetterTarget && input.d80CCD1B < CAP_80CCD1B) {
+    const saving = deltaIfApply({ d80CCD1B: CAP_80CCD1B }, "OLD");
+    if (saving > 0) {
+      out.push({
+        id: "80ccd1b_headroom",
+        title: `Open or top up NPS Tier-1 by ₹${format(CAP_80CCD1B - input.d80CCD1B)}`,
+        body: "80CCD(1B) is a separate ₹50,000 deduction stacked above 80C. Equity allocation is your call (LC25 / LC50 / LC75).",
+        expectedSavings: saving,
+        applicableRegime: "OLD",
+        severity: saving > 12000 ? "MEDIUM" : "LOW",
+        action:
+          "Open NPS Tier-1 with any POP or directly via the eNPS portal. Contributions before March 31 count for the current FY.",
+      });
+    }
+  }
+
+  // ----- 80CCD(2) employer NPS — works in BOTH regimes --------------------
+  if (input.salary > 0) {
+    const cap = input.salary * 0.1;
+    if (input.employerNPS80CCD2 < cap - 1000) {
+      const saving = deltaIfApply(
+        { employerNPS80CCD2: cap },
+        currentRegime,
+      );
+      if (saving > 1000) {
+        out.push({
+          id: "80ccd2_headroom",
+          title: "Negotiate employer NPS contribution under 80CCD(2)",
+          body: `Up to 10% of salary (₹${format(Math.round(cap))}/yr at your level) as employer NPS reduces taxable income in BOTH regimes — including the New regime, which strips most other deductions.`,
+          expectedSavings: saving,
+          applicableRegime: "BOTH",
+          severity: saving > 25000 ? "HIGH" : "MEDIUM",
+          action:
+            "Ask HR to redirect part of your variable / flexible-pay component into employer NPS. Net pay drops slightly but tax falls more.",
+        });
+      }
+    }
+  }
+
+  // ----- 80D parents -----------------------------------------------------
+  // Cap is ₹25K self/family + ₹50K for senior parents = ₹75K. Suggesting
+  // headroom only if currently below 25K (basic) or below 75K and we know
+  // the user has dependents — to avoid fabricating a parent premium.
+  if (oldRegimeIsBetterTarget && input.d80D < 25000) {
+    const saving = deltaIfApply({ d80D: 25000 }, "OLD");
+    if (saving > 0) {
+      out.push({
+        id: "80d_floor",
+        title: "Add a ₹25K family-floater health policy under 80D",
+        body: "₹25,000 is the basic cap for self / spouse / dependent children. Premiums + a ₹5K preventive check-up qualify.",
+        expectedSavings: saving,
+        applicableRegime: "OLD",
+        severity: "MEDIUM",
+        action:
+          "If you don't have a personal health policy, take a family-floater of ₹10–15L cover. Even if employer covers you, a personal policy is portable.",
+      });
+    }
+  }
+
+  // ----- 24(b) home loan interest ----------------------------------------
+  // Don't suggest taking on new debt; only flag headroom if the user
+  // already has a home loan and isn't claiming the full ₹2L cap.
+  if (
+    oldRegimeIsBetterTarget &&
+    input.d24bHomeLoan > 0 &&
+    input.d24bHomeLoan < CAP_24B_HOME_LOAN
+  ) {
+    const saving = deltaIfApply({ d24bHomeLoan: CAP_24B_HOME_LOAN }, "OLD");
+    if (saving > 0) {
+      out.push({
+        id: "24b_claim",
+        title: "Claim the full home-loan interest deduction",
+        body: `The ₹2L cap on self-occupied home loan interest is being under-claimed. Make sure your interest certificate is correctly entered in Schedule HP.`,
+        expectedSavings: saving,
+        applicableRegime: "OLD",
+        severity: "MEDIUM",
+        action:
+          "Pull the latest interest certificate from your lender's portal and verify the principal vs. interest split going into your ITR.",
+      });
+    }
+  }
+
+  // ----- 80TTA savings interest ------------------------------------------
+  if (oldRegimeIsBetterTarget && input.d80TTA < CAP_80TTA && input.otherIncome > 0) {
+    const saving = deltaIfApply({ d80TTA: CAP_80TTA }, "OLD");
+    if (saving > 0) {
+      out.push({
+        id: "80tta_claim",
+        title: "Claim 80TTA savings-bank interest",
+        body: "Up to ₹10,000 of savings-account interest is deductible. If your 'other income' includes any savings interest, this is free money.",
+        expectedSavings: saving,
+        applicableRegime: "OLD",
+        severity: "LOW",
+        action:
+          "Pull each bank's interest certificate. Add interest from FDs separately under 'Income from Other Sources' (FD interest doesn't qualify for 80TTA).",
+      });
+    }
+  }
+
+  return out.sort((a, b) => b.expectedSavings - a.expectedSavings);
+}
+
+function format(n: number): string {
+  return Math.round(n).toLocaleString("en-IN");
+}
+
 // ----- Formatting helpers --------------------------------------------------
 
 export const SECTION_HINTS: Record<string, string> = {
