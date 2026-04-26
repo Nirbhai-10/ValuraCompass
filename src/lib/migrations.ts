@@ -1,4 +1,5 @@
-import { Database, EMPTY_DB, HouseholdMode } from "./types";
+import { defaultScenarioIdsForRegion } from "./scenarios";
+import { Database, EMPTY_DB, HouseholdMode, Region } from "./types";
 
 /**
  * Backfill missing fields on records that predate a feature. Run on every
@@ -12,6 +13,9 @@ export function migrate(input: Partial<Database> | undefined): Database {
     households: db.households.map((h) => ({
       ...h,
       mode: (h.mode ?? "BASIC") as HouseholdMode,
+      scenarioIds: Array.isArray(h.scenarioIds)
+        ? h.scenarioIds
+        : defaultScenarioIdsForRegion((h.region ?? "IN") as Region),
     })),
     goals: db.goals.map((g) => ({
       ...g,

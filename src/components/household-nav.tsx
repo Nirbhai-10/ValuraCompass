@@ -22,6 +22,7 @@ const SECTIONS: NavItem[] = [
   { slug: "insurance", label: "Insurance", basic: true },
   { slug: "goals", label: "Goals", basic: true },
   { slug: "retirement", label: "Retirement" },
+  { slug: "scenarios", label: "Scenarios" },
   { slug: "risk", label: "Risk profile" },
   { slug: "tax", label: "Tax" },
   { slug: "estate", label: "Estate" },

@@ -17,6 +17,7 @@ import {
   householdMetrics,
 } from "@/lib/metrics";
 import { Severity, buildInsights } from "@/lib/insights";
+import { allScores, bandTone } from "@/lib/scores";
 import { formatMoney } from "@/lib/format";
 import { Breakdown } from "@/components/breakdown";
 import { Card, Kpi } from "@/components/ui";
@@ -82,6 +83,7 @@ export default function HouseholdOverviewPage() {
 
   const topInsights = insights.slice(0, 4);
   const isAdvanced = household.mode === "ADVANCED";
+  const scores = isAdvanced ? allScores(db, id) : [];
 
   return (
     <div className="space-y-8">
@@ -134,6 +136,56 @@ export default function HouseholdOverviewPage() {
           }
         />
       </div>
+
+      {scores.length > 0 ? (
+        <Card>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-sm font-semibold">Plan scores</h3>
+              <p className="text-xs text-ink-500 mt-0.5">
+                Six lenses on the household. Each is computed from your data and
+                explainable.
+              </p>
+            </div>
+            <Link
+              href={`/app/households/${id}/insights`}
+              className="text-xs text-brand-deep font-medium hover:underline"
+            >
+              See observations →
+            </Link>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {scores.map((s) => {
+              const tone = bandTone(s.band);
+              const ring =
+                tone === "positive"
+                  ? "ring-brand-deep/30 bg-brand-mint/30"
+                  : tone === "warn"
+                    ? "ring-amber-200 bg-amber-50"
+                    : tone === "danger"
+                      ? "ring-red-200 bg-red-50"
+                      : "ring-line-200";
+              return (
+                <li
+                  key={s.id}
+                  className={`border border-line-200 rounded-button px-4 py-3 ring-1 ${ring}`}
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="text-xs text-ink-500">{s.label}</p>
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-700">
+                      {s.band}
+                    </span>
+                  </div>
+                  <p className="text-2xl font-semibold tabular-nums mt-1">{s.value}</p>
+                  <p className="text-xs text-ink-500 mt-1 leading-relaxed">
+                    {s.narrative}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      ) : null}
 
       {topInsights.length > 0 ? (
         <Card>

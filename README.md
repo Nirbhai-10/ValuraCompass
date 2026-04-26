@@ -108,11 +108,23 @@ projection / observation surfaces over the same underlying data.
 
 | Section         | What it does                                                                                          |
 | --------------- | ----------------------------------------------------------------------------------------------------- |
-| **Retirement**  | A full Monte Carlo simulator. 800 paths over the accumulation + retirement horizon, sampling annual returns from a normal distribution, drawing inflation-adjusted expenses through retirement. Returns success probability, percentile bands (p10 / p50 / p90), and a corpus-over-time chart. Inputs default from your current retirement-class assets and surplus. |
+| **Retirement**  | A full Monte Carlo simulator. 800 paths over the accumulation + retirement horizon, sampling annual returns from a normal distribution, drawing inflation-adjusted expenses through retirement. Returns success probability, percentile bands (p10 / p50 / p90), and a corpus-over-time chart. Inputs default from your current retirement-class assets and surplus. Optional one-time shocks (medical, inheritance) and income gaps (job loss, sabbatical) layer on top. |
+| **Scenarios**   | A library of pre-built what-if cases — Retire at 55 / 60 / 65, FIRE at 50, Perpetual income (4% rule), Inflation +2pp, Returns −2pp, Higher volatility, Plan to age 95, Job loss for 12 / 24 months, Medical emergency at 50 (₹25L), Emergency at age 30 (₹10L), Inheritance at 55 (₹50L). Pick any subset and run them in one click. The page shows side-by-side success probability, P50 / P10 final corpus, and per-scenario band charts on click. The selection is saved per household and gets included in the printed report. |
 | **Risk profile**| A 6-question RPS questionnaire (horizon, drawdown reaction, knowledge, dependents, income stability, growth-vs-comfort). Live score + band (Conservative → Aggressive) with a one-line rationale. |
 | **Tax**         | India regime selector (Old / New / NA), business-income share, free-form notes. Used by other surfaces to frame complexity. |
 | **Estate**      | Will + power-of-attorney status, guardianship notes, legacy intent.                                  |
 | **Assumptions** | Per-household overrides for inflation (general / education / healthcare), expected returns (equity / debt / gold), equity volatility (σ), and life expectancy. Defaults are seeded by region (IN / GCC / GLOBAL). |
+
+### Plan scores (Advanced overview + report)
+
+Six derived scores, each 0–100 with a band (`Stressed` < 50, `Tight` 50–69, `Stable` 70–84, `Strong` 85+). Computed by [`lib/scores.ts`](src/lib/scores.ts), pure functions over the database, fully explainable.
+
+- **Financial Health (FHS)** — composite of cash flow, net worth, emergency cover, and debt stress.
+- **Emergency Resilience (ERS)** — months of essential expenses covered by liquid assets.
+- **Debt Stress (DSS)** — debt-to-assets and EMI-to-income.
+- **Retirement Readiness (RRS)** — retirement-class corpus vs. a 25× essentials target.
+- **Investment Suitability (ISS)** — alignment between equity allocation and the household's risk band.
+- **Planning Completeness (PAS)** — coverage across people, income, expenses, assets, liabilities, insurance, goals, risk, tax, estate.
 
 There is also an app-level **Your data** screen for backing up, importing,
 or wiping every household at once. New visitors get the Sharma-family demo
@@ -293,7 +305,8 @@ lifting sits in shared modules.
 | `/app/households/[id]/goals`               | Dynamic     | Manage goals (with asset-funding selector).              |
 | `/app/households/[id]/insights`            | Dynamic     | Rule-based observations; pin any to action center.       |
 | `/app/households/[id]/tasks`               | Dynamic     | Action center for everyday and pinned items.             |
-| `/app/households/[id]/retirement`          | Advanced    | Monte Carlo retirement simulator (800 paths).            |
+| `/app/households/[id]/retirement`          | Advanced    | Monte Carlo retirement simulator (800 paths) with shocks + income gaps. |
+| `/app/households/[id]/scenarios`           | Advanced    | Pick + run multiple scenarios; side-by-side comparison.  |
 | `/app/households/[id]/risk`                | Advanced    | RPS questionnaire + band rationale.                      |
 | `/app/households/[id]/tax`                 | Advanced    | Regime, business-income share, notes.                    |
 | `/app/households/[id]/estate`              | Advanced    | Will / POA status, guardianship, legacy intent.          |

@@ -1,14 +1,31 @@
 /**
  * A small, browser-safe Monte Carlo retirement simulator.
  *
- * Each path simulates: yearly contributions while accumulating, then yearly
- * withdrawals during retirement, with annual returns drawn from a normal
- * distribution and expenses growing at the inflation rate.
+ * Each path simulates accumulation (with inflation-growing contributions),
+ * then withdrawal of inflation-adjusted expenses through retirement, with
+ * annual returns drawn from a normal distribution. Optional one-time shocks
+ * (medical, inheritance) and income gaps (job loss, sabbatical) layer on top.
  *
- * The function returns the success probability (paths that don't deplete),
- * percentile bands of corpus over time (p10 / p50 / p90), and a small set of
- * sample paths for visualisation.
+ * The simulation returns: success probability (paths that don't deplete),
+ * percentile bands of corpus over time (p10 / p50 / p90), and a few sample
+ * paths for visualization.
  */
+
+export interface OneTimeShock {
+  /** Year index from today (0 = year 1 of accumulation) */
+  yearOffset: number;
+  /** Positive = withdrawal, Negative = inflow. In today's terms; inflated to event year. */
+  amountToday: number;
+  /** Optional label for UI */
+  label?: string;
+}
+
+export interface IncomeGap {
+  /** First year (offset from today) where contribution is paused */
+  startYearOffset: number;
+  /** Duration in years (whole-year resolution) */
+  years: number;
+}
 
 export interface MonteCarloInputs {
   currentCorpus: number;
@@ -20,6 +37,8 @@ export interface MonteCarloInputs {
   returnVolatility: number; // std dev, e.g. 0.16
   inflation: number; // e.g. 0.06
   numSimulations?: number;
+  shocks?: OneTimeShock[];
+  incomeGaps?: IncomeGap[];
 }
 
 export interface MonteCarloResult {
@@ -29,8 +48,8 @@ export interface MonteCarloResult {
   finalP50: number;
   finalP90: number;
   bands: { year: number; p10: number; p50: number; p90: number }[];
-  samplePaths: number[][]; // a few paths for the chart
-  yearOfFirstFailure?: number; // median year where path first hits 0 (across failed paths)
+  samplePaths: number[][];
+  yearOfFirstFailure?: number;
 }
 
 export function runRetirementMonteCarlo(
@@ -46,6 +65,23 @@ export function runRetirementMonteCarlo(
   const annualExpenseToday = input.monthlyExpensesAtRetirementToday * 12;
   const accumulationYears = Math.max(0, Math.round(input.yearsToRetirement));
 
+  // Pre-compute "is contribution paused" per year (income gaps)
+  const contributionPaused = new Array<boolean>(totalYears + 1).fill(false);
+  (input.incomeGaps ?? []).forEach((gap) => {
+    for (let y = 0; y < gap.years; y++) {
+      const yr = gap.startYearOffset + y;
+      if (yr >= 0 && yr <= totalYears) contributionPaused[yr] = true;
+    }
+  });
+
+  // Pre-bucket shocks by year for fast lookup
+  const shocksByYear = new Map<number, OneTimeShock[]>();
+  (input.shocks ?? []).forEach((s) => {
+    const yr = Math.round(s.yearOffset);
+    if (!shocksByYear.has(yr)) shocksByYear.set(yr, []);
+    shocksByYear.get(yr)!.push(s);
+  });
+
   const paths: number[][] = new Array(numSimulations);
   let successes = 0;
   const failureYears: number[] = [];
@@ -58,25 +94,35 @@ export function runRetirementMonteCarlo(
 
     for (let year = 1; year <= totalYears; year++) {
       const r = sampleNormal(input.expectedReturn, input.returnVolatility);
-      // Apply return for the year on existing corpus
       corpus = corpus * (1 + r);
 
       if (year <= accumulationYears) {
-        // Contribute (assume contribution grows with inflation so the real
-        // savings rate stays constant)
-        const inflatedContribution =
-          annualContribution * Math.pow(1 + input.inflation, year - 1);
-        corpus += inflatedContribution;
+        if (!contributionPaused[year - 1]) {
+          const inflatedContribution =
+            annualContribution * Math.pow(1 + input.inflation, year - 1);
+          corpus += inflatedContribution;
+        }
       } else {
-        // Withdraw this year's expenses
-        const yearsFromToday = year - 1; // inflate from "today"
+        const yearsFromToday = year - 1;
         const annualExpense =
           annualExpenseToday * Math.pow(1 + input.inflation, yearsFromToday);
         corpus -= annualExpense;
-        if (corpus < 0 && failedAt === null) {
-          failedAt = year;
-          corpus = 0;
+      }
+
+      // Apply one-time shocks scheduled for this year
+      const shocksThisYear = shocksByYear.get(year - 1);
+      if (shocksThisYear) {
+        for (const shock of shocksThisYear) {
+          const inflated =
+            shock.amountToday *
+            Math.pow(1 + input.inflation, Math.max(0, year - 1));
+          corpus -= inflated;
         }
+      }
+
+      if (corpus < 0 && failedAt === null) {
+        failedAt = year;
+        corpus = 0;
       }
 
       path[year] = Math.max(corpus, 0);
@@ -89,12 +135,9 @@ export function runRetirementMonteCarlo(
 
   const successProbability = successes / numSimulations;
 
-  // Percentile bands per year
   const yearSlices: number[][] = new Array(totalYears + 1);
   for (let year = 0; year <= totalYears; year++) {
-    yearSlices[year] = paths
-      .map((p) => p[year])
-      .sort((a, b) => a - b);
+    yearSlices[year] = paths.map((p) => p[year]).sort((a, b) => a - b);
   }
   const pickPercentile = (sorted: number[], p: number) =>
     sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
@@ -106,14 +149,11 @@ export function runRetirementMonteCarlo(
     p90: pickPercentile(slice, 0.9),
   }));
 
-  // Pick a handful of representative paths for the visualization (median +
-  // a few spread around it)
   const indexBySorted = paths
     .map((p, i) => ({ i, end: p[totalYears] }))
     .sort((a, b) => a.end - b.end);
   const samplePaths: number[][] = [];
-  const targets = [0.1, 0.3, 0.5, 0.7, 0.9];
-  for (const t of targets) {
+  for (const t of [0.1, 0.3, 0.5, 0.7, 0.9]) {
     const idx = indexBySorted[Math.floor(t * indexBySorted.length)]?.i;
     if (typeof idx === "number") samplePaths.push(paths[idx]);
   }
@@ -133,7 +173,6 @@ export function runRetirementMonteCarlo(
   };
 }
 
-// Box-Muller transform: convert two uniform samples into one standard normal.
 function sampleNormal(mean: number, stdDev: number): number {
   let u1 = 0;
   let u2 = 0;

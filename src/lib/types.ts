@@ -19,6 +19,8 @@ export interface Household {
   currency: string;
   structure: HouseholdStructure;
   mode: HouseholdMode;
+  /** Scenario IDs the user has pinned for this household (used by /scenarios + /print). */
+  scenarioIds: string[];
   createdAt: string;
   updatedAt: string;
 }

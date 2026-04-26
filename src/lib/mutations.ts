@@ -29,6 +29,8 @@ import {
 
 // ----- Households ----------------------------------------------------------
 
+import { defaultScenarioIdsForRegion } from "./scenarios";
+
 export type HouseholdDraft = Pick<
   Household,
   "name" | "region" | "currency" | "structure" | "mode"
@@ -45,7 +47,13 @@ export function addHousehold(
     ...db,
     households: [
       ...db.households,
-      { id: householdId, ...draft, createdAt: ts, updatedAt: ts },
+      {
+        id: householdId,
+        ...draft,
+        scenarioIds: defaultScenarioIdsForRegion(draft.region),
+        createdAt: ts,
+        updatedAt: ts,
+      },
     ],
     persons: [
       ...db.persons,
@@ -59,6 +67,18 @@ export function addHousehold(
     ],
   });
   return { mutator, householdId, primaryPersonId };
+}
+
+export function setHouseholdScenarios(
+  householdId: string,
+  scenarioIds: string[],
+): Mutator {
+  return (db) => ({
+    ...db,
+    households: db.households.map((h) =>
+      h.id === householdId ? { ...h, scenarioIds, updatedAt: nowISO() } : h,
+    ),
+  });
 }
 
 export function updateHousehold(id: string, patch: Partial<HouseholdDraft>): Mutator {
