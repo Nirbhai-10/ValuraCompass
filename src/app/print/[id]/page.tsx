@@ -21,6 +21,7 @@ import {
 } from "@/lib/metrics";
 import { allScores } from "@/lib/scores";
 import { buildInsights } from "@/lib/insights";
+import { CATEGORY_LABEL, generateActions } from "@/lib/actions";
 import {
   buildBaseInputs,
   findScenario,
@@ -73,6 +74,7 @@ export default function PrintReportPage() {
   const isAdvanced = household.mode === "ADVANCED";
   const scores = isAdvanced ? allScores(db, id) : [];
   const insights = isAdvanced ? buildInsights(db, id).slice(0, 6) : [];
+  const actions = generateActions(db, id).slice(0, 12);
 
   // Run pinned scenarios (advanced mode only)
   const scenarioResults: { id: string; name: string; description: string; result: MonteCarloResult }[] = [];
@@ -297,6 +299,29 @@ export default function PrintReportPage() {
               </li>
             ))}
           </ul>
+        </Section>
+      ) : null}
+
+      {actions.length > 0 ? (
+        <Section title="Action plan">
+          <p className="text-xs text-ink-500 mb-3">
+            Concrete moves derived from your data, sorted by severity. Amounts where
+            applicable, deadlines where relevant.
+          </p>
+          <Table
+            headers={["Action", "Category", "Owner", "Severity", "Amount / saving"]}
+            rows={actions.map((a) => [
+              a.title + (a.deadline ? ` (by ${a.deadline})` : ""),
+              CATEGORY_LABEL[a.category],
+              a.owner,
+              a.severity,
+              a.expectedSaving
+                ? `Saves ${fmt(a.expectedSaving)}`
+                : a.amount
+                  ? fmt(a.amount)
+                  : "—",
+            ])}
+          />
         </Section>
       ) : null}
 

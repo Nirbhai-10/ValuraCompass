@@ -100,7 +100,8 @@ projection / observation surfaces over the same underlying data.
 | **Insurance**   | Life and non-life policies with sum assured, insurer, premium.                                        |
 | **Goals**       | What you're saving toward, with priority, target year, and asset linking for "% funded" tracking.     |
 | **Insights**    | Plain-English observations from a deterministic rules engine (emergency-fund, term-cover, concentration, debt-to-assets, allocation drift, will-status, near-goal-funding, missing data). Pin any to your action center. |
-| **Action center** | A small list of things you've decided to do next, derived from insights or added by you.            |
+| **Action center** | Auto-generated next-best-actions with concrete amounts, deadlines, owners, and deep-links to the page where you can act, plus your own running task list. Computed from insights, tax optimisations, score gaps, and data-hygiene checks. The full plan is included in the printed report. |
+| **How it works** | A walkthrough of every surface — quick start, the household model, Basic vs Advanced, what's on each tab, backup workflow, privacy notes. Reachable from `How it works` in the header.|
 | **Settings**    | Rename, change region/currency/structure, switch mode, export JSON, open the report, or delete.       |
 | **Report**      | A one-page printable summary suited for PDF / advisor handoff.                                        |
 
@@ -295,6 +296,7 @@ lifting sits in shared modules.
 | `/app`                                     | Static      | List of households.                                      |
 | `/app/new`                                 | Static      | Create a new household (mode picker on the form).        |
 | `/app/data`                                | Static      | Backup / import / reset all data.                        |
+| `/app/help`                                | Static      | "How it works" guide — every surface, what it's for, FAQ.|
 | `/app/households/[id]`                     | Dynamic     | Overview: KPIs, top insights, breakdowns, top goals.     |
 | `/app/households/[id]/people`              | Dynamic     | Manage people.                                           |
 | `/app/households/[id]/income`              | Dynamic     | Manage monthly income.                                   |

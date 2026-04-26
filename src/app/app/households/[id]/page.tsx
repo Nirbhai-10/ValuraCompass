@@ -17,6 +17,12 @@ import {
   householdMetrics,
 } from "@/lib/metrics";
 import { Severity, buildInsights } from "@/lib/insights";
+import {
+  Action,
+  ActionSeverity,
+  CATEGORY_LABEL,
+  generateActions,
+} from "@/lib/actions";
 import { allScores, bandTone } from "@/lib/scores";
 import { formatMoney, formatMoneyCompact } from "@/lib/format";
 import { Breakdown } from "@/components/breakdown";
@@ -44,6 +50,10 @@ export default function HouseholdOverviewPage() {
 
   const insights = useMemo(
     () => (household ? buildInsights(db, id) : []),
+    [db, id, household],
+  );
+  const actions = useMemo(
+    () => (household ? generateActions(db, id) : []),
     [db, id, household],
   );
 
@@ -92,6 +102,7 @@ export default function HouseholdOverviewPage() {
   const topInsights = insights.slice(0, 4);
   const isAdvanced = household.mode === "ADVANCED";
   const scores = isAdvanced ? allScores(db, id) : [];
+  const topActions = actions.slice(0, 5);
 
   return (
     <div className="space-y-8">
@@ -184,41 +195,62 @@ export default function HouseholdOverviewPage() {
         </Card>
       ) : null}
 
-      {topInsights.length > 0 ? (
+      {topActions.length > 0 ? (
         <Card>
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h3 className="text-sm font-semibold">What stands out</h3>
+              <h3 className="text-sm font-semibold">Next best actions</h3>
               <p className="text-xs text-ink-500 mt-0.5">
-                Plain-English observations from the rules engine. Open Insights for
-                everything and the "why".
+                Concrete, ranked next moves with amounts and owners. Pin any of them
+                to your action list.
               </p>
             </div>
             <Link
-              href={`/app/households/${id}/insights`}
+              href={`/app/households/${id}/tasks`}
               className="text-xs text-brand-deep font-medium hover:underline"
             >
-              All insights →
+              Action center →
             </Link>
           </div>
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {topInsights.map((i) => (
+          <ul className="grid gap-3">
+            {topActions.map((a) => (
               <li
-                key={i.ruleId}
+                key={a.id}
                 className="border border-line-200 rounded-button px-4 py-3"
               >
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center px-2 h-5 rounded-full text-[10px] font-semibold uppercase tracking-wide border ${SEVERITY_CLASSES[i.severity]}`}
-                  >
-                    {i.severity}
-                  </span>
-                  <span className="text-[11px] text-ink-500">{i.category}</span>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`inline-flex items-center px-2 h-5 rounded-full text-[10px] font-semibold uppercase tracking-wide border ${SEVERITY_CLASSES[a.severity as Severity]}`}
+                      >
+                        {a.severity}
+                      </span>
+                      <span className="text-[11px] text-ink-500">
+                        {CATEGORY_LABEL[a.category]}
+                      </span>
+                      {a.deadline ? (
+                        <span className="text-[11px] text-ink-500">· by {a.deadline}</span>
+                      ) : null}
+                    </div>
+                    <p className="text-sm font-semibold mt-1.5">{a.title}</p>
+                    <p className="text-xs text-ink-500 mt-1 leading-relaxed">{a.body}</p>
+                  </div>
+                  {a.whereToAct ? (
+                    <Link
+                      href={a.whereToAct}
+                      className="text-xs font-medium text-brand-deep hover:underline shrink-0"
+                    >
+                      Open →
+                    </Link>
+                  ) : null}
                 </div>
-                <p className="text-sm font-medium mt-1.5">{i.title}</p>
-                {i.action ? (
-                  <p className="text-xs text-ink-500 mt-1.5 leading-relaxed">
-                    {i.action}
+                {a.expectedSaving ? (
+                  <p className="mt-2 text-xs text-ink-500">
+                    Estimated tax saving:{" "}
+                    <span className="font-semibold text-brand-deep tabular-nums">
+                      {fmtCompact(a.expectedSaving)}
+                    </span>
                   </p>
                 ) : null}
               </li>

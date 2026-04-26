@@ -17,6 +17,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               Households
             </Link>
             <Link
+              href="/app/help"
+              className="hidden sm:inline-flex h-8 px-3 items-center rounded-button text-ink-700 hover:text-brand-deep hover:bg-brand-mint/40"
+            >
+              How it works
+            </Link>
+            <Link
               href="/app/data"
               className="hidden sm:inline-flex h-8 px-3 items-center rounded-button text-ink-700 hover:text-brand-deep hover:bg-brand-mint/40"
             >
@@ -34,6 +40,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="flex-1">{children}</main>
       <footer className="border-t border-line-200 bg-white">
         <div className="mx-auto max-w-6xl px-6 py-3 text-[11px] text-ink-500 flex flex-wrap items-center justify-end gap-3">
+          <Link href="/app/help" className="hover:text-brand-deep">
+            How it works
+          </Link>
+          <span>·</span>
           <Link href="/app/data" className="hover:text-brand-deep">
             Backup
           </Link>
