@@ -81,12 +81,17 @@ export function removeHousehold(id: string): Mutator {
 
 // ----- Persons -------------------------------------------------------------
 
-export type PersonDraft = Omit<Person, "id" | "householdId">;
+// `isPrimary` is a managed flag (set on household creation, never edited
+// through the form), so we strip it from the editable Draft.
+export type PersonDraft = Omit<Person, "id" | "householdId" | "isPrimary">;
 
 export function addPerson(householdId: string, draft: PersonDraft): Mutator {
   return (db) => ({
     ...db,
-    persons: [...db.persons, { id: uid("p"), householdId, ...draft }],
+    persons: [
+      ...db.persons,
+      { id: uid("p"), householdId, isPrimary: false, ...draft },
+    ],
   });
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 interface DialogProps {
   open: boolean;
@@ -12,6 +12,8 @@ interface DialogProps {
 }
 
 export function Dialog({ open, onClose, title, description, children }: DialogProps) {
+  const titleId = useId();
+
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -32,16 +34,17 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="dialog-title"
+      aria-labelledby={titleId}
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
     >
       <div
         className="absolute inset-0 bg-ink-900/40 backdrop-blur-[2px]"
         onClick={onClose}
+        aria-hidden
       />
       <div className="relative w-full max-w-lg bg-white rounded-t-card sm:rounded-card border border-line-200 shadow-xl mx-0 sm:mx-4 max-h-[92vh] flex flex-col">
         <div className="px-5 sm:px-6 py-4 border-b border-line-200">
-          <h2 id="dialog-title" className="text-base font-semibold text-ink-900">
+          <h2 id={titleId} className="text-base font-semibold text-ink-900">
             {title}
           </h2>
           {description ? (
@@ -62,22 +65,21 @@ interface DialogState<T> {
 }
 
 export function useDialog<T>(): DialogState<T> {
-  const [open, setOpen] = React.useState(false);
-  const [item, setItem] = React.useState<T | null>(null);
+  const [open, setOpen] = useState(false);
+  const [item, setItem] = useState<T | null>(null);
 
-  return React.useMemo(
-    () => ({
-      open,
-      item,
-      openFor: (x: T | null) => {
-        setItem(x);
-        setOpen(true);
-      },
-      close: () => {
-        setOpen(false);
-        setItem(null);
-      },
-    }),
-    [open, item],
+  const openFor = useCallback((x: T | null) => {
+    setItem(x);
+    setOpen(true);
+  }, []);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setItem(null);
+  }, []);
+
+  return useMemo(
+    () => ({ open, item, openFor, close }),
+    [open, item, openFor, close],
   );
 }

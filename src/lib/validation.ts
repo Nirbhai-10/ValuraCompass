@@ -47,7 +47,6 @@ export function parsePerson(fd: FormData): Validation<PersonDraft> {
       fullName,
       relation: str(fd, "relation") || "Other",
       dob: opt(str(fd, "dob")),
-      isPrimary: false,
       notes: opt(str(fd, "notes")),
     },
   };
