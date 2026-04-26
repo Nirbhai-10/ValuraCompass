@@ -1,5 +1,7 @@
 export type Region = "IN" | "GCC" | "GLOBAL";
 
+export type HouseholdMode = "BASIC" | "ADVANCED";
+
 export type HouseholdStructure =
   | "SINGLE"
   | "DINK"
@@ -16,6 +18,7 @@ export interface Household {
   region: Region;
   currency: string;
   structure: HouseholdStructure;
+  mode: HouseholdMode;
   createdAt: string;
   updatedAt: string;
 }
@@ -93,6 +96,79 @@ export interface Goal {
   notes?: string;
 }
 
+// ----- Advanced-mode profiles ---------------------------------------------
+
+export type RiskBand =
+  | "CONSERVATIVE"
+  | "MOD_CONSERVATIVE"
+  | "BALANCED"
+  | "GROWTH"
+  | "AGGRESSIVE";
+
+export interface RiskProfile {
+  householdId: string;
+  rps: number; // 0..100
+  band: RiskBand;
+  answers: Record<string, number>; // questionId → score 0..4
+  updatedAt: string;
+}
+
+export type TaxRegime = "OLD" | "NEW" | "NA";
+
+export interface TaxProfile {
+  householdId: string;
+  regime: TaxRegime;
+  businessIncomeShare?: number; // 0..1
+  notes?: string;
+  updatedAt: string;
+}
+
+export type WillStatus = "NONE" | "DRAFT" | "REGISTERED" | "OUTDATED";
+
+export interface EstateProfile {
+  householdId: string;
+  willStatus: WillStatus;
+  poaStatus?: WillStatus;
+  guardianshipNotes?: string;
+  legacyIntent?: string;
+  updatedAt: string;
+}
+
+/**
+ * Per-household assumption overrides. Defaults live in `lib/assumptions.ts`.
+ * Only fields the user has changed are persisted; everything else falls
+ * back to the regional default.
+ */
+export interface AssumptionOverride {
+  householdId: string;
+  inflationGeneral?: number; // e.g. 0.06 = 6%
+  inflationEducation?: number;
+  inflationHealthcare?: number;
+  returnEquity?: number;
+  returnDebt?: number;
+  returnGold?: number;
+  returnVolatility?: number;
+  lifeExpectancy?: number;
+  updatedAt: string;
+}
+
+export type TaskStatus = "OPEN" | "IN_PROGRESS" | "DONE" | "SNOOZED";
+
+export interface Task {
+  id: string;
+  householdId: string;
+  title: string;
+  body?: string;
+  status: TaskStatus;
+  source: "USER" | "INSIGHT";
+  insightRuleId?: string;
+  dueDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
+
 export interface Database {
   households: Household[];
   persons: Person[];
@@ -102,6 +178,11 @@ export interface Database {
   liabilities: Liability[];
   policies: Policy[];
   goals: Goal[];
+  riskProfiles: RiskProfile[];
+  taxProfiles: TaxProfile[];
+  estateProfiles: EstateProfile[];
+  assumptions: AssumptionOverride[];
+  tasks: Task[];
 }
 
 export const EMPTY_DB: Database = {
@@ -113,7 +194,14 @@ export const EMPTY_DB: Database = {
   liabilities: [],
   policies: [],
   goals: [],
+  riskProfiles: [],
+  taxProfiles: [],
+  estateProfiles: [],
+  assumptions: [],
+  tasks: [],
 };
+
+// ----- Label dictionaries --------------------------------------------------
 
 export const PERSON_RELATIONS = [
   "Self",
@@ -214,4 +302,37 @@ export const REGION_LABELS: Record<Region, string> = {
   IN: "India",
   GCC: "GCC",
   GLOBAL: "Global",
+};
+
+export const MODE_LABELS: Record<HouseholdMode, string> = {
+  BASIC: "Basic",
+  ADVANCED: "Advanced",
+};
+
+export const RISK_BAND_LABELS: Record<RiskBand, string> = {
+  CONSERVATIVE: "Conservative",
+  MOD_CONSERVATIVE: "Moderately conservative",
+  BALANCED: "Balanced",
+  GROWTH: "Growth",
+  AGGRESSIVE: "Aggressive",
+};
+
+export const WILL_STATUS_LABELS: Record<WillStatus, string> = {
+  NONE: "None",
+  DRAFT: "Draft",
+  REGISTERED: "Registered",
+  OUTDATED: "Outdated",
+};
+
+export const TAX_REGIME_LABELS: Record<TaxRegime, string> = {
+  OLD: "India · Old regime",
+  NEW: "India · New regime",
+  NA: "Not applicable / non-resident",
+};
+
+export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+  OPEN: "Open",
+  IN_PROGRESS: "In progress",
+  DONE: "Done",
+  SNOOZED: "Snoozed",
 };

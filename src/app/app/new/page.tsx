@@ -6,7 +6,9 @@ import { useUpdate } from "@/lib/store";
 import { addHousehold } from "@/lib/mutations";
 import { parseHousehold } from "@/lib/validation";
 import {
+  HouseholdMode,
   HouseholdStructure,
+  MODE_LABELS,
   REGION_LABELS,
   Region,
   STRUCTURE_LABELS,
@@ -94,15 +96,30 @@ export default function NewHouseholdPage() {
             </Field>
           </div>
 
-          <Field label="Structure" htmlFor="structure">
-            <Select id="structure" name="structure" defaultValue="NUCLEAR">
-              {(Object.keys(STRUCTURE_LABELS) as HouseholdStructure[]).map((s) => (
-                <option key={s} value={s}>
-                  {STRUCTURE_LABELS[s]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Field label="Structure" htmlFor="structure">
+              <Select id="structure" name="structure" defaultValue="NUCLEAR">
+                {(Object.keys(STRUCTURE_LABELS) as HouseholdStructure[]).map((s) => (
+                  <option key={s} value={s}>
+                    {STRUCTURE_LABELS[s]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label="Mode"
+              hint="Basic covers the everyday picture. Advanced unlocks retirement Monte Carlo, insights, risk profile, tax, estate."
+              htmlFor="mode"
+            >
+              <Select id="mode" name="mode" defaultValue="BASIC">
+                {(Object.keys(MODE_LABELS) as HouseholdMode[]).map((m) => (
+                  <option key={m} value={m}>
+                    {MODE_LABELS[m]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
 
           <Field
             label="Primary person's name"

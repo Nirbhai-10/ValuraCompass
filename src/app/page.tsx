@@ -78,7 +78,7 @@ export default function LandingPage() {
       <footer className="border-t border-line-200 bg-white mt-auto">
         <div className="mx-auto max-w-5xl px-6 py-5 text-xs text-ink-500 flex flex-wrap items-center justify-between gap-2">
           <div>© {new Date().getFullYear()} Valura.Ai · Compass</div>
-          <div>Planning observation only. Not investment, tax, or legal advice.</div>
+          <div>Built for households · India · GCC · Global</div>
         </div>
       </footer>
     </main>

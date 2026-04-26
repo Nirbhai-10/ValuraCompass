@@ -6,7 +6,9 @@ import { useDatabase, useUpdate } from "@/lib/store";
 import { selectHouseholdSnapshot } from "@/lib/selectors";
 import { removeHousehold, updateHousehold } from "@/lib/mutations";
 import {
+  HouseholdMode,
   HouseholdStructure,
+  MODE_LABELS,
   REGION_LABELS,
   Region,
   STRUCTURE_LABELS,
@@ -42,11 +44,12 @@ export default function SettingsPage() {
     const region = String(fd.get("region") ?? "IN") as Region;
     const currency = String(fd.get("currency") ?? "INR");
     const structure = String(fd.get("structure") ?? "NUCLEAR") as HouseholdStructure;
+    const mode = String(fd.get("mode") ?? "BASIC") as HouseholdMode;
     if (!name) {
       toast.error("Household name can't be empty.");
       return;
     }
-    update(updateHousehold(id, { name, region, currency, structure }));
+    update(updateHousehold(id, { name, region, currency, structure, mode }));
     toast.success("Saved.");
   }
 
@@ -109,15 +112,30 @@ export default function SettingsPage() {
               </Select>
             </Field>
           </div>
-          <Field label="Structure" htmlFor="structure">
-            <Select id="structure" name="structure" defaultValue={household.structure}>
-              {(Object.keys(STRUCTURE_LABELS) as HouseholdStructure[]).map((s) => (
-                <option key={s} value={s}>
-                  {STRUCTURE_LABELS[s]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Field label="Structure" htmlFor="structure">
+              <Select id="structure" name="structure" defaultValue={household.structure}>
+                {(Object.keys(STRUCTURE_LABELS) as HouseholdStructure[]).map((s) => (
+                  <option key={s} value={s}>
+                    {STRUCTURE_LABELS[s]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field
+              label="Mode"
+              hint="Basic shows the everyday surfaces. Advanced unlocks Monte Carlo, insights, risk, tax, estate, assumptions."
+              htmlFor="mode"
+            >
+              <Select id="mode" name="mode" defaultValue={household.mode}>
+                {(Object.keys(MODE_LABELS) as HouseholdMode[]).map((m) => (
+                  <option key={m} value={m}>
+                    {MODE_LABELS[m]}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
           <div className="flex items-center gap-3 pt-2">
             <Button variant="primary" type="submit">
               Save changes

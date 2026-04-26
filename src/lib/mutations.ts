@@ -1,6 +1,8 @@
 import { Mutator, nowISO, uid } from "./store";
 import {
   Asset,
+  AssumptionOverride,
+  EstateProfile,
   Expense,
   Goal,
   Household,
@@ -8,6 +10,9 @@ import {
   Liability,
   Person,
   Policy,
+  RiskProfile,
+  Task,
+  TaxProfile,
 } from "./types";
 
 /**
@@ -26,7 +31,7 @@ import {
 
 export type HouseholdDraft = Pick<
   Household,
-  "name" | "region" | "currency" | "structure"
+  "name" | "region" | "currency" | "structure" | "mode"
 >;
 
 export function addHousehold(
@@ -76,6 +81,11 @@ export function removeHousehold(id: string): Mutator {
     liabilities: db.liabilities.filter((l) => l.householdId !== id),
     policies: db.policies.filter((p) => p.householdId !== id),
     goals: db.goals.filter((g) => g.householdId !== id),
+    riskProfiles: db.riskProfiles.filter((r) => r.householdId !== id),
+    taxProfiles: db.taxProfiles.filter((t) => t.householdId !== id),
+    estateProfiles: db.estateProfiles.filter((e) => e.householdId !== id),
+    assumptions: db.assumptions.filter((a) => a.householdId !== id),
+    tasks: db.tasks.filter((t) => t.householdId !== id),
   });
 }
 
@@ -275,6 +285,154 @@ export function removeGoal(id: string): Mutator {
   return (db) => ({
     ...db,
     goals: db.goals.filter((g) => g.id !== id),
+  });
+}
+
+// ----- Risk profile (one per household) -----------------------------------
+
+export type RiskProfileDraft = Omit<RiskProfile, "householdId" | "updatedAt">;
+
+export function upsertRiskProfile(
+  householdId: string,
+  draft: RiskProfileDraft,
+): Mutator {
+  return (db) => {
+    const ts = nowISO();
+    const exists = db.riskProfiles.some((r) => r.householdId === householdId);
+    return {
+      ...db,
+      riskProfiles: exists
+        ? db.riskProfiles.map((r) =>
+            r.householdId === householdId
+              ? { ...r, ...draft, updatedAt: ts }
+              : r,
+          )
+        : [...db.riskProfiles, { householdId, ...draft, updatedAt: ts }],
+    };
+  };
+}
+
+// ----- Tax profile (one per household) -------------------------------------
+
+export type TaxProfileDraft = Omit<TaxProfile, "householdId" | "updatedAt">;
+
+export function upsertTaxProfile(
+  householdId: string,
+  draft: TaxProfileDraft,
+): Mutator {
+  return (db) => {
+    const ts = nowISO();
+    const exists = db.taxProfiles.some((t) => t.householdId === householdId);
+    return {
+      ...db,
+      taxProfiles: exists
+        ? db.taxProfiles.map((t) =>
+            t.householdId === householdId
+              ? { ...t, ...draft, updatedAt: ts }
+              : t,
+          )
+        : [...db.taxProfiles, { householdId, ...draft, updatedAt: ts }],
+    };
+  };
+}
+
+// ----- Estate profile (one per household) ----------------------------------
+
+export type EstateProfileDraft = Omit<EstateProfile, "householdId" | "updatedAt">;
+
+export function upsertEstateProfile(
+  householdId: string,
+  draft: EstateProfileDraft,
+): Mutator {
+  return (db) => {
+    const ts = nowISO();
+    const exists = db.estateProfiles.some((e) => e.householdId === householdId);
+    return {
+      ...db,
+      estateProfiles: exists
+        ? db.estateProfiles.map((e) =>
+            e.householdId === householdId
+              ? { ...e, ...draft, updatedAt: ts }
+              : e,
+          )
+        : [...db.estateProfiles, { householdId, ...draft, updatedAt: ts }],
+    };
+  };
+}
+
+// ----- Assumption overrides (one per household) ---------------------------
+
+export type AssumptionOverrideDraft = Omit<
+  AssumptionOverride,
+  "householdId" | "updatedAt"
+>;
+
+export function upsertAssumptionOverride(
+  householdId: string,
+  draft: AssumptionOverrideDraft,
+): Mutator {
+  return (db) => {
+    const ts = nowISO();
+    const exists = db.assumptions.some((a) => a.householdId === householdId);
+    return {
+      ...db,
+      assumptions: exists
+        ? db.assumptions.map((a) =>
+            a.householdId === householdId
+              ? { ...a, ...draft, updatedAt: ts }
+              : a,
+          )
+        : [...db.assumptions, { householdId, ...draft, updatedAt: ts }],
+    };
+  };
+}
+
+export function clearAssumptionOverride(householdId: string): Mutator {
+  return (db) => ({
+    ...db,
+    assumptions: db.assumptions.filter((a) => a.householdId !== householdId),
+  });
+}
+
+// ----- Tasks ---------------------------------------------------------------
+
+export type TaskDraft = Omit<Task, "id" | "householdId" | "createdAt" | "updatedAt">;
+
+export function addTask(householdId: string, draft: TaskDraft): Mutator {
+  return (db) => {
+    const ts = nowISO();
+    return {
+      ...db,
+      tasks: [
+        ...db.tasks,
+        {
+          id: uid("task"),
+          householdId,
+          ...draft,
+          createdAt: ts,
+          updatedAt: ts,
+        },
+      ],
+    };
+  };
+}
+
+export function updateTask(id: string, patch: Partial<TaskDraft>): Mutator {
+  return (db) => {
+    const ts = nowISO();
+    return {
+      ...db,
+      tasks: db.tasks.map((t) =>
+        t.id === id ? { ...t, ...patch, updatedAt: ts } : t,
+      ),
+    };
+  };
+}
+
+export function removeTask(id: string): Mutator {
+  return (db) => ({
+    ...db,
+    tasks: db.tasks.filter((t) => t.id !== id),
   });
 }
 

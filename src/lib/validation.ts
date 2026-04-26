@@ -9,7 +9,7 @@ import {
   PersonDraft,
   PolicyDraft,
 } from "./mutations";
-import { HouseholdStructure, Region } from "./types";
+import { HouseholdMode, HouseholdStructure, Region } from "./types";
 
 export type Validation<T> =
   | { ok: true; value: T }
@@ -28,13 +28,17 @@ export function parseHousehold(
   const region = str(fd, "region") as Region;
   const currency = str(fd, "currency");
   const structure = str(fd, "structure") as HouseholdStructure;
+  const mode = (str(fd, "mode") || "BASIC") as HouseholdMode;
 
   if (name.length < 2) return fail("Please enter a household name.");
   if (primaryName.length < 1) return fail("Please enter the primary person's name.");
   if (!currency) return fail("Pick a currency.");
   return {
     ok: true,
-    value: { household: { name, region, currency, structure }, primaryName },
+    value: {
+      household: { name, region, currency, structure, mode },
+      primaryName,
+    },
   };
 }
 

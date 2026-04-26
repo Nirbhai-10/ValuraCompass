@@ -1,16 +1,24 @@
 # Valura Compass
 
-> Household-native financial planning. Calm, minimal, browser-only.
+> Household-native financial planning — Basic and Advanced over one data
+> model, with a Monte Carlo retirement simulator, an insights engine, a risk
+> profiler, tax/estate profiles, and editable assumptions. Browser-only.
 
-Compass is a small, focused web app for tracking the people, money, and goals
-that make up a household. It is built to be opened on a quiet evening, used
-for fifteen minutes, and closed again — not stared at all day. Everything is
-saved in your browser's `localStorage`. There are no accounts, no servers,
-and no databases.
+Compass is a focused web app for tracking the people, money, and goals that
+make up a household. **Basic mode** keeps the everyday surfaces clean and
+fast. **Advanced mode** unlocks the deeper layers: Monte Carlo retirement
+projections, a rule-based insights engine, a 6-question risk profile,
+tax/estate profiles, and per-household assumption overrides.
+
+Everything is saved in your browser's `localStorage`. There are no accounts,
+no servers, and no databases. **A demo household ("the Sharma family") is
+loaded automatically on first visit** so you can see every surface populated
+without typing anything in.
 
 If you only need one paragraph: clone the repo, run
 `npm install && npm run dev`, open <http://localhost:3000>, click
-**Get started**, create a household, and start adding things.
+**Get started**, and explore the demo household. Reset it from "Your data"
+when you're ready to start your own.
 
 ---
 
@@ -46,7 +54,6 @@ If you only need one paragraph: clone the repo, run
 21. [Known limitations](#known-limitations)
 22. [Roadmap ideas](#roadmap-ideas)
 23. [FAQ](#faq)
-24. [Disclaimer](#disclaimer)
 
 ---
 
@@ -76,24 +83,40 @@ nothing to phone home, and nothing to leak.
 
 ## What's in the app
 
-Everything is anchored to a **household**. Inside each one, there are a
-handful of sections.
+Everything is anchored to a **household**, which has a **mode** — Basic or
+Advanced. Basic shows a clean everyday surface set; Advanced unlocks the
+projection / observation surfaces over the same underlying data.
 
-| Section         | What it tracks                                                                                       |
-| --------------- | ---------------------------------------------------------------------------------------------------- |
-| **Overview**    | Net worth, monthly surplus, emergency-fund months, insurance multiple, asset allocation, expense breakdown, top-funded goals. |
-| **People**      | Family members and dependents — primary person, spouse, kids, parents, anyone who shares money.       |
-| **Income**      | Recurring monthly income, by type (salary, business, rental, etc.) and optionally by earner.          |
-| **Expenses**    | Recurring monthly outflows, by category, with an "essential vs. discretionary" flag.                  |
-| **Assets**      | Anything you own — cash, equity, debt instruments, gold, real estate, retirement, business, other.    |
-| **Liabilities** | Anything you owe — home loan, vehicle loan, credit card, personal/education/business loans.           |
-| **Insurance**   | Life and non-life policies, with sum assured, insurer, and annual premium.                            |
-| **Goals**       | What you're saving toward, with priority and target year. Link assets to a goal to track funded %.    |
-| **Settings**    | Rename the household, change region/currency/structure, export it as JSON, open the report, or delete it permanently. |
-| **Report**      | A one-page printable summary you can save as PDF or hand to an advisor.                               |
+### Always available (Basic + Advanced)
+
+| Section         | What it tracks                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------------------------- |
+| **Overview**    | Net worth, monthly surplus, emergency-fund months, insurance multiple, asset allocation, expense breakdown, top-funded goals, and the top insights when in Advanced. |
+| **People**      | Family members and dependents — primary person, spouse, kids, parents.                                |
+| **Income**      | Recurring monthly income, by type and optionally by earner.                                           |
+| **Expenses**    | Recurring monthly outflows, by category, with an essential / discretionary flag.                      |
+| **Assets**      | Cash, equity, debt, gold, real estate, retirement, business, other.                                   |
+| **Liabilities** | Home / vehicle / education / personal / business loans, credit cards, anything you owe.               |
+| **Insurance**   | Life and non-life policies with sum assured, insurer, premium.                                        |
+| **Goals**       | What you're saving toward, with priority, target year, and asset linking for "% funded" tracking.     |
+| **Insights**    | Plain-English observations from a deterministic rules engine (emergency-fund, term-cover, concentration, debt-to-assets, allocation drift, will-status, near-goal-funding, missing data). Pin any to your action center. |
+| **Action center** | A small list of things you've decided to do next, derived from insights or added by you.            |
+| **Settings**    | Rename, change region/currency/structure, switch mode, export JSON, open the report, or delete.       |
+| **Report**      | A one-page printable summary suited for PDF / advisor handoff.                                        |
+
+### Advanced mode adds
+
+| Section         | What it does                                                                                          |
+| --------------- | ----------------------------------------------------------------------------------------------------- |
+| **Retirement**  | A full Monte Carlo simulator. 800 paths over the accumulation + retirement horizon, sampling annual returns from a normal distribution, drawing inflation-adjusted expenses through retirement. Returns success probability, percentile bands (p10 / p50 / p90), and a corpus-over-time chart. Inputs default from your current retirement-class assets and surplus. |
+| **Risk profile**| A 6-question RPS questionnaire (horizon, drawdown reaction, knowledge, dependents, income stability, growth-vs-comfort). Live score + band (Conservative → Aggressive) with a one-line rationale. |
+| **Tax**         | India regime selector (Old / New / NA), business-income share, free-form notes. Used by other surfaces to frame complexity. |
+| **Estate**      | Will + power-of-attorney status, guardianship notes, legacy intent.                                  |
+| **Assumptions** | Per-household overrides for inflation (general / education / healthcare), expected returns (equity / debt / gold), equity volatility (σ), and life expectancy. Defaults are seeded by region (IN / GCC / GLOBAL). |
 
 There is also an app-level **Your data** screen for backing up, importing,
-or wiping every household at once.
+or wiping every household at once. New visitors get the Sharma-family demo
+loaded automatically; reset that key any time to start blank.
 
 Every section has the same shape:
 
@@ -254,22 +277,29 @@ lifting sits in shared modules.
 
 ## Routing map
 
-| Path                                       | Type        | What it shows                                          |
-| ------------------------------------------ | ----------- | ------------------------------------------------------ |
-| `/`                                        | Static      | Landing page with hero, three feature blurbs, footer.  |
-| `/app`                                     | Static      | List of households (or empty state).                   |
-| `/app/new`                                 | Static      | Form to create a new household.                        |
-| `/app/data`                                | Static      | Backup / import / reset all data.                      |
-| `/app/households/[id]`                     | Dynamic     | Household overview (KPIs, breakdowns, top goals).      |
-| `/app/households/[id]/people`              | Dynamic     | Manage people in the household.                        |
-| `/app/households/[id]/income`              | Dynamic     | Manage monthly income lines.                           |
-| `/app/households/[id]/expenses`            | Dynamic     | Manage monthly expense lines.                          |
-| `/app/households/[id]/assets`              | Dynamic     | Manage assets.                                         |
-| `/app/households/[id]/liabilities`         | Dynamic     | Manage liabilities.                                    |
-| `/app/households/[id]/insurance`           | Dynamic     | Manage insurance policies.                             |
-| `/app/households/[id]/goals`               | Dynamic     | Manage goals (with asset-funding selector).            |
-| `/app/households/[id]/settings`            | Dynamic     | Edit, export, link to report, or delete a household.   |
-| `/print/[id]`                              | Dynamic     | Print-friendly one-page household report.              |
+| Path                                       | Type        | What it shows                                            |
+| ------------------------------------------ | ----------- | -------------------------------------------------------- |
+| `/`                                        | Static      | Landing page.                                            |
+| `/app`                                     | Static      | List of households.                                      |
+| `/app/new`                                 | Static      | Create a new household (mode picker on the form).        |
+| `/app/data`                                | Static      | Backup / import / reset all data.                        |
+| `/app/households/[id]`                     | Dynamic     | Overview: KPIs, top insights, breakdowns, top goals.     |
+| `/app/households/[id]/people`              | Dynamic     | Manage people.                                           |
+| `/app/households/[id]/income`              | Dynamic     | Manage monthly income.                                   |
+| `/app/households/[id]/expenses`            | Dynamic     | Manage monthly expenses.                                 |
+| `/app/households/[id]/assets`              | Dynamic     | Manage assets.                                           |
+| `/app/households/[id]/liabilities`         | Dynamic     | Manage liabilities.                                      |
+| `/app/households/[id]/insurance`           | Dynamic     | Manage insurance policies.                               |
+| `/app/households/[id]/goals`               | Dynamic     | Manage goals (with asset-funding selector).              |
+| `/app/households/[id]/insights`            | Dynamic     | Rule-based observations; pin any to action center.       |
+| `/app/households/[id]/tasks`               | Dynamic     | Action center for everyday and pinned items.             |
+| `/app/households/[id]/retirement`          | Advanced    | Monte Carlo retirement simulator (800 paths).            |
+| `/app/households/[id]/risk`                | Advanced    | RPS questionnaire + band rationale.                      |
+| `/app/households/[id]/tax`                 | Advanced    | Regime, business-income share, notes.                    |
+| `/app/households/[id]/estate`              | Advanced    | Will / POA status, guardianship, legacy intent.          |
+| `/app/households/[id]/assumptions`         | Advanced    | Per-household overrides for inflation / returns / σ.     |
+| `/app/households/[id]/settings`            | Dynamic     | Edit basics, switch mode, export, delete.                |
+| `/print/[id]`                              | Dynamic     | Print-friendly one-page household report.                |
 
 Every route under `/app/households/[id]` is wrapped by a layout that:
 
@@ -842,16 +872,6 @@ the overview show a net-worth trend over time.
 **Why does the build work on Vercel without a database?** Because there is
 no database. Every Vercel deploy is just static HTML, a tiny JS bundle, and
 one key in your browser's local storage.
-
----
-
-## Disclaimer
-
-Compass is **planning observation only**. Nothing in this app is
-investment, tax, or legal advice. The numbers it shows are the numbers you
-typed in; it does not predict markets, recommend products, or model
-returns. If you act on something Compass shows you, that's on you. If your
-situation is unusual, talk to an actual qualified human.
 
 ---
 

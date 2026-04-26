@@ -1,6 +1,8 @@
 import {
   Asset,
+  AssumptionOverride,
   Database,
+  EstateProfile,
   Expense,
   Goal,
   Household,
@@ -8,6 +10,9 @@ import {
   Liability,
   Person,
   Policy,
+  RiskProfile,
+  Task,
+  TaxProfile,
 } from "./types";
 
 /**
@@ -63,6 +68,38 @@ export function selectGoals(db: Database, householdId: string): Goal[] {
   return db.goals.filter((g) => g.householdId === householdId);
 }
 
+export function selectRiskProfile(
+  db: Database,
+  householdId: string,
+): RiskProfile | undefined {
+  return db.riskProfiles.find((r) => r.householdId === householdId);
+}
+
+export function selectTaxProfile(
+  db: Database,
+  householdId: string,
+): TaxProfile | undefined {
+  return db.taxProfiles.find((t) => t.householdId === householdId);
+}
+
+export function selectEstateProfile(
+  db: Database,
+  householdId: string,
+): EstateProfile | undefined {
+  return db.estateProfiles.find((e) => e.householdId === householdId);
+}
+
+export function selectAssumptionOverride(
+  db: Database,
+  householdId: string,
+): AssumptionOverride | undefined {
+  return db.assumptions.find((a) => a.householdId === householdId);
+}
+
+export function selectTasks(db: Database, householdId: string): Task[] {
+  return db.tasks.filter((t) => t.householdId === householdId);
+}
+
 export interface HouseholdSnapshot {
   household: Household;
   persons: Person[];
@@ -72,6 +109,11 @@ export interface HouseholdSnapshot {
   liabilities: Liability[];
   policies: Policy[];
   goals: Goal[];
+  riskProfile?: RiskProfile;
+  taxProfile?: TaxProfile;
+  estateProfile?: EstateProfile;
+  assumptionOverride?: AssumptionOverride;
+  tasks: Task[];
 }
 
 export function selectHouseholdSnapshot(
@@ -89,6 +131,11 @@ export function selectHouseholdSnapshot(
     liabilities: selectLiabilities(db, householdId),
     policies: selectPolicies(db, householdId),
     goals: selectGoals(db, householdId),
+    riskProfile: selectRiskProfile(db, householdId),
+    taxProfile: selectTaxProfile(db, householdId),
+    estateProfile: selectEstateProfile(db, householdId),
+    assumptionOverride: selectAssumptionOverride(db, householdId),
+    tasks: selectTasks(db, householdId),
   };
 }
 

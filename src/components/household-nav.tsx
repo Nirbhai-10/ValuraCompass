@@ -4,29 +4,50 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { HouseholdMode } from "@/lib/types";
 
-const SECTIONS = [
-  { slug: "", label: "Overview" },
-  { slug: "people", label: "People" },
-  { slug: "income", label: "Income" },
-  { slug: "expenses", label: "Expenses" },
-  { slug: "assets", label: "Assets" },
-  { slug: "liabilities", label: "Liabilities" },
-  { slug: "insurance", label: "Insurance" },
-  { slug: "goals", label: "Goals" },
+interface NavItem {
+  slug: string;
+  label: string;
+  basic?: boolean; // visible in BASIC mode
+}
+
+const SECTIONS: NavItem[] = [
+  { slug: "", label: "Overview", basic: true },
+  { slug: "people", label: "People", basic: true },
+  { slug: "income", label: "Income", basic: true },
+  { slug: "expenses", label: "Expenses", basic: true },
+  { slug: "assets", label: "Assets", basic: true },
+  { slug: "liabilities", label: "Liabilities", basic: true },
+  { slug: "insurance", label: "Insurance", basic: true },
+  { slug: "goals", label: "Goals", basic: true },
+  { slug: "retirement", label: "Retirement" },
+  { slug: "risk", label: "Risk profile" },
+  { slug: "tax", label: "Tax" },
+  { slug: "estate", label: "Estate" },
+  { slug: "insights", label: "Insights", basic: true },
+  { slug: "tasks", label: "Action center", basic: true },
+  { slug: "assumptions", label: "Assumptions" },
 ];
 
-export function HouseholdNav({ householdId }: { householdId: string }) {
+export function HouseholdNav({
+  householdId,
+  mode,
+}: {
+  householdId: string;
+  mode: HouseholdMode;
+}) {
   const pathname = usePathname() ?? "";
   const base = `/app/households/${householdId}`;
   const [open, setOpen] = useState(false);
 
-  // Close drawer on navigation
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
-  function makeItem({ slug, label }: { slug: string; label: string }) {
+  const visible = SECTIONS.filter((s) => mode === "ADVANCED" || s.basic);
+
+  function makeItem({ slug, label }: NavItem) {
     const href = slug ? `${base}/${slug}` : base;
     const active = slug ? pathname.startsWith(href) : pathname === base;
     return (
@@ -45,14 +66,13 @@ export function HouseholdNav({ householdId }: { householdId: string }) {
   }
 
   const currentLabel =
-    SECTIONS.find(({ slug }) => {
+    visible.find(({ slug }) => {
       const href = slug ? `${base}/${slug}` : base;
       return slug ? pathname.startsWith(href) : pathname === base;
     })?.label ?? (pathname.endsWith("/settings") ? "Settings" : "Overview");
 
   return (
     <>
-      {/* Mobile trigger */}
       <button
         type="button"
         className="lg:hidden inline-flex w-full items-center justify-between gap-2 px-4 h-10 rounded-button bg-white border border-line-200 text-sm font-medium text-ink-900 hover:border-brand-deep"
@@ -87,7 +107,7 @@ export function HouseholdNav({ householdId }: { householdId: string }) {
           !open && "hidden lg:block",
         )}
       >
-        <ul className="flex flex-col">{SECTIONS.map(makeItem)}</ul>
+        <ul className="flex flex-col">{visible.map(makeItem)}</ul>
         <div className="my-2 h-px bg-line-100" />
         <ul className="flex flex-col">
           {makeItem({ slug: "settings", label: "Settings" })}
@@ -101,6 +121,14 @@ export function HouseholdNav({ householdId }: { householdId: string }) {
             </Link>
           </li>
         </ul>
+        {mode === "BASIC" ? (
+          <p className="text-[11px] text-ink-500 px-3 py-2 mt-1">
+            <Link href={`${base}/settings`} className="link">
+              Switch to Advanced
+            </Link>{" "}
+            for retirement Monte Carlo, risk profile, and more.
+          </p>
+        ) : null}
       </nav>
     </>
   );

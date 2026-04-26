@@ -2,94 +2,95 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Valura.Ai brand logo — stylized "V" with three curved strokes and a compass
- * needle, followed by the "alura.Ai" wordmark. Uses the brand gradient
- * (#0F5132 → #4CAF50).
+ * Valura brand logo. Two variants ship in /public:
+ *   - /valura-logo.svg       — gradient (primary)
+ *   - /valura-logo-green.svg — solid brand green (for light/coloured backgrounds)
  *
- * Three sizes:
- *   <CompassMark />          — just the icon (default 28x28)
- *   <CompassLogo />          — icon + wordmark
- *   <CompassLogo iconOnly /> — icon only, consistent with CompassMark
+ * <CompassLogo />          → full lockup (icon + wordmark)
+ * <CompassLogo iconOnly /> → just the V-mark, sized 28×28
+ * <CompassMark />          → standalone mark (alias of iconOnly)
  */
 
+interface LogoProps {
+  variant?: "gradient" | "green";
+  iconOnly?: boolean;
+  className?: string;
+  height?: number;
+}
+
+const SOURCES: Record<NonNullable<LogoProps["variant"]>, string> = {
+  gradient: "/valura-logo.svg",
+  green: "/valura-logo-green.svg",
+};
+
+export function CompassLogo({
+  variant = "gradient",
+  iconOnly,
+  className,
+  height = 28,
+}: LogoProps) {
+  if (iconOnly) {
+    return <CompassMark className={className} size={height} variant={variant} />;
+  }
+  // Native aspect from the source SVG is 385×145 (≈ 2.66:1).
+  const width = Math.round(height * (385 / 145));
+  // eslint-disable-next-line @next/next/no-img-element
+  return (
+    <img
+      src={SOURCES[variant]}
+      alt="Valura"
+      width={width}
+      height={height}
+      className={cn("block shrink-0", className)}
+      style={{ height, width: "auto" }}
+    />
+  );
+}
+
+/**
+ * Just the V-mark (icon, no wordmark), drawn inline so it can be sized and
+ * coloured without depending on /public assets.
+ */
 export function CompassMark({
   size = 28,
   className,
+  variant = "gradient",
 }: {
   size?: number;
   className?: string;
+  variant?: "gradient" | "green";
 }) {
   return (
     <svg
       role="img"
-      aria-label="Valura.Ai"
+      aria-label="Valura"
       width={size}
       height={size}
-      viewBox="0 0 64 64"
+      viewBox="60 40 60 70"
       className={cn("shrink-0", className)}
     >
       <defs>
-        <linearGradient id="valuraV" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#0F5132" />
-          <stop offset="50%" stopColor="#2C7A5A" />
-          <stop offset="100%" stopColor="#4CAF50" />
+        <linearGradient id="valura-mark-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#245782" />
+          <stop offset="100%" stopColor="#54AC94" />
         </linearGradient>
       </defs>
-      {/* Three curved strokes forming the left side of the V */}
-      <path
-        d="M10 10 C 10 28, 18 48, 30 58"
-        fill="none"
-        stroke="url(#valuraV)"
-        strokeWidth="4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M18 10 C 20 28, 26 46, 34 56"
-        fill="none"
-        stroke="url(#valuraV)"
-        strokeWidth="4"
-        strokeLinecap="round"
-        opacity="0.85"
-      />
-      <path
-        d="M26 10 C 28 26, 32 42, 36 52"
-        fill="none"
-        stroke="url(#valuraV)"
-        strokeWidth="4"
-        strokeLinecap="round"
-        opacity="0.7"
-      />
-      {/* Right side of V + compass needle */}
-      <path
-        d="M38 46 L 48 14"
-        fill="none"
-        stroke="url(#valuraV)"
-        strokeWidth="4"
-        strokeLinecap="round"
-      />
-      <path
-        d="M43 14 L 48 2 L 53 14 L 48 11 Z"
-        fill="url(#valuraV)"
-      />
+      {(() => {
+        const stroke =
+          variant === "gradient" ? "url(#valura-mark-grad)" : "#05A049";
+        const fill =
+          variant === "gradient" ? "url(#valura-mark-grad)" : "#05A049";
+        return (
+          <g fill="none" stroke={stroke} strokeWidth="2.7">
+            <path d="M79.4 46.9C79.4 74.3 88.7 95.6 97.0 95.6C105.4 95.6 109.7 82.9 109.7 61.1" />
+            <path d="M74.6 46.9C74.6 73.6 82.0 99.5 98.8 100.5" />
+            <path d="M70 46.9C70 77.0 79.3 102.0 95.0 105.0" />
+            <path d="M100.3 61.1C100.3 74.5 98.0 86.5 94.8 95.2" />
+            <path d="M105.0 61.1C105.0 72.8 103.5 85.1 100.3 95.0" />
+            <path d="M105 48 L111 58.6 H99 Z" stroke="none" fill={fill} />
+          </g>
+        );
+      })()}
     </svg>
-  );
-}
-
-export function CompassLogo({
-  iconOnly,
-  className,
-}: {
-  iconOnly?: boolean;
-  className?: string;
-}) {
-  if (iconOnly) return <CompassMark className={className} />;
-  return (
-    <span className={cn("inline-flex items-center gap-2", className)}>
-      <CompassMark size={28} />
-      <span className="font-display text-[18px] leading-none">
-        <span style={{ color: "#0F5132", fontWeight: 500 }}>alura</span>
-        <span style={{ color: "#334155", fontWeight: 400 }}>.Ai</span>
-      </span>
-    </span>
   );
 }

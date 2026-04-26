@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import { buildDemoDatabase } from "./demo";
 import { migrate } from "./migrations";
 import { Database, EMPTY_DB } from "./types";
 
 const STORAGE_KEY = "compass-data-v1";
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -22,8 +23,17 @@ function read(): Database {
   if (cache) return cache;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      cache = migrate(undefined);
+    if (raw === null) {
+      // First visit on this device — seed a small demo dataset and persist
+      // it so subsequent reads (and other tabs) see the same shape.
+      const seeded = migrate(buildDemoDatabase());
+      cache = seeded;
+      try {
+        const env: Envelope = { version: SCHEMA_VERSION, data: seeded };
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(env));
+      } catch {
+        // ignore quota / private mode errors
+      }
       return cache;
     }
     const parsed = JSON.parse(raw) as Partial<Envelope> | Partial<Database>;
@@ -117,6 +127,10 @@ export function importAll(text: string): { ok: true } | { ok: false; error: stri
 
 export function resetAll(): void {
   write(migrate(undefined));
+}
+
+export function loadDemoData(): void {
+  write(migrate(buildDemoDatabase()));
 }
 
 // Cross-tab sync

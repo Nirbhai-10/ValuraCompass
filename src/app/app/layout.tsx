@@ -34,7 +34,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="flex-1">{children}</main>
       <footer className="border-t border-line-200 bg-white">
         <div className="mx-auto max-w-6xl px-6 py-3 text-[11px] text-ink-500 flex flex-wrap items-center justify-between gap-2">
-          <div>Saved locally in your browser. Not investment, tax, or legal advice.</div>
+          <div>Saved locally in your browser — no accounts, no servers.</div>
           <div className="flex items-center gap-3">
             <Link href="/app/data" className="hover:text-brand-deep">
               Backup

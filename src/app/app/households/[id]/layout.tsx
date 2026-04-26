@@ -6,7 +6,7 @@ import { useEffect } from "react";
 import { HouseholdNav } from "@/components/household-nav";
 import { useDatabase, useHydrated } from "@/lib/store";
 import { selectHousehold } from "@/lib/selectors";
-import { REGION_LABELS, STRUCTURE_LABELS } from "@/lib/types";
+import { MODE_LABELS, REGION_LABELS, STRUCTURE_LABELS } from "@/lib/types";
 
 export default function HouseholdLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -44,9 +44,14 @@ export default function HouseholdLayout({ children }: { children: React.ReactNod
           <span className="mx-1.5">/</span>
           <span className="text-ink-700">{household.name}</span>
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight mt-2 break-words">
-          {household.name}
-        </h1>
+        <div className="flex flex-wrap items-center gap-3 mt-2">
+          <h1 className="text-3xl font-semibold tracking-tight break-words">
+            {household.name}
+          </h1>
+          <span className="inline-flex items-center px-2.5 h-6 rounded-full text-[11px] font-medium bg-brand-mint text-brand-deep border border-transparent">
+            {MODE_LABELS[household.mode]}
+          </span>
+        </div>
         <p className="text-sm text-ink-500 mt-1.5">
           {REGION_LABELS[household.region]} · {household.currency} ·{" "}
           {STRUCTURE_LABELS[household.structure]}
@@ -55,7 +60,7 @@ export default function HouseholdLayout({ children }: { children: React.ReactNod
 
       <div className="grid gap-6 lg:gap-8 lg:grid-cols-[220px_1fr]">
         <aside className="lg:sticky lg:top-6 self-start">
-          <HouseholdNav householdId={household.id} />
+          <HouseholdNav householdId={household.id} mode={household.mode} />
         </aside>
         <section className="min-w-0">{children}</section>
       </div>

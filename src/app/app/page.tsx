@@ -5,7 +5,7 @@ import { useDatabase, useHydrated } from "@/lib/store";
 import { selectHouseholds } from "@/lib/selectors";
 import { householdMetrics } from "@/lib/metrics";
 import { formatMoney } from "@/lib/format";
-import { REGION_LABELS, STRUCTURE_LABELS } from "@/lib/types";
+import { MODE_LABELS, REGION_LABELS, STRUCTURE_LABELS } from "@/lib/types";
 import { Button, Card, EmptyState, PageHeader } from "@/components/ui";
 
 export default function HouseholdsListPage() {
@@ -62,11 +62,16 @@ export default function HouseholdsListPage() {
                 aria-label={`Open ${h.name}`}
               >
                 <Card className="transition-colors group-hover:border-brand-deep">
-                  <p className="text-xs text-ink-500">
-                    {REGION_LABELS[h.region]} · {h.currency} ·{" "}
-                    {STRUCTURE_LABELS[h.structure]}
-                  </p>
-                  <h3 className="text-lg font-semibold mt-1">{h.name}</h3>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-ink-500 truncate">
+                      {REGION_LABELS[h.region]} · {h.currency} ·{" "}
+                      {STRUCTURE_LABELS[h.structure]}
+                    </p>
+                    <span className="inline-flex shrink-0 items-center px-2 h-5 rounded-full text-[10px] font-medium bg-brand-mint text-brand-deep border border-transparent">
+                      {MODE_LABELS[h.mode]}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-semibold mt-1.5">{h.name}</h3>
 
                   <dl className="mt-5 grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
                     <div>
