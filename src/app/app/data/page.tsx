@@ -1,14 +1,29 @@
 "use client";
 
 import { useRef } from "react";
-import { exportAll, importAll, resetAll, useDatabase, useHydrated } from "@/lib/store";
+import { useRouter } from "next/navigation";
+import {
+  exportAll,
+  importAll,
+  loadDemoData,
+  resetAll,
+  useDatabase,
+  useHydrated,
+} from "@/lib/store";
 import { Button, Card, PageHeader, useToast } from "@/components/ui";
 
 export default function DataPage() {
+  const router = useRouter();
   const hydrated = useHydrated();
   const db = useDatabase();
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+
+  function handleLoadDemo() {
+    loadDemoData();
+    toast.success("Demo data loaded.");
+    router.push("/app/households/hh_demo_sharma");
+  }
 
   if (!hydrated) {
     return (
@@ -93,6 +108,20 @@ export default function DataPage() {
             <p className="text-xs text-ink-500">Storage key</p>
             <p className="text-xs text-ink-700 font-mono mt-1.5">compass-data-v1</p>
           </div>
+        </div>
+      </Card>
+
+      <Card>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">Load demo data</p>
+            <p className="text-xs text-ink-500 mt-0.5 max-w-md">
+              Replaces what's in this browser with the Sharma family demo — a complete
+              household with people, income, expenses, assets, liabilities, insurance,
+              goals, risk profile, tax / estate, and pinned scenarios.
+            </p>
+          </div>
+          <Button onClick={handleLoadDemo}>Load demo</Button>
         </div>
       </Card>
 

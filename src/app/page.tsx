@@ -53,12 +53,16 @@ export default function LandingPage() {
             Get started
           </Link>
           <Link
-            href="/app"
+            href="/app/households/hh_demo_sharma"
             className="inline-flex h-10 px-5 items-center rounded-button bg-white text-ink-900 border border-line-200 text-sm font-medium hover:border-brand-deep hover:text-brand-deep"
           >
-            Open my households
+            See the demo →
           </Link>
         </div>
+        <p className="mt-4 text-xs text-ink-500">
+          First-time visitors see the Sharma-family demo loaded automatically. Reset it
+          any time from <span className="font-medium">Your data</span>.
+        </p>
       </section>
 
       <section className="mx-auto w-full max-w-5xl px-6 pb-20">

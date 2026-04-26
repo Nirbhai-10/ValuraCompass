@@ -1,16 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useDatabase, useHydrated } from "@/lib/store";
+import { useRouter } from "next/navigation";
+import { loadDemoData, useDatabase, useHydrated } from "@/lib/store";
 import { selectHouseholds } from "@/lib/selectors";
 import { householdMetrics } from "@/lib/metrics";
 import { formatMoney } from "@/lib/format";
 import { MODE_LABELS, REGION_LABELS, STRUCTURE_LABELS } from "@/lib/types";
-import { Button, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Button, Card, EmptyState, PageHeader, useToast } from "@/components/ui";
 
 export default function HouseholdsListPage() {
+  const router = useRouter();
+  const toast = useToast();
   const hydrated = useHydrated();
   const db = useDatabase();
+
+  function handleLoadDemo() {
+    loadDemoData();
+    toast.success("Demo data loaded — the Sharma family is yours to explore.");
+    router.push("/app/households/hh_demo_sharma");
+  }
 
   if (!hydrated) {
     return (
@@ -27,11 +36,16 @@ export default function HouseholdsListPage() {
       <div className="mx-auto max-w-3xl px-6 py-16">
         <EmptyState
           title="Welcome to Compass"
-          description="Create your first household to start planning. Everything you enter stays in this browser."
+          description="Create your own household, or explore the fully-populated Sharma family demo to see every surface in action."
           action={
-            <Link href="/app/new">
-              <Button variant="primary">Create a household</Button>
-            </Link>
+            <div className="flex flex-wrap gap-2 justify-center">
+              <Button variant="primary" onClick={handleLoadDemo}>
+                Load demo data
+              </Button>
+              <Link href="/app/new">
+                <Button variant="secondary">Create a household</Button>
+              </Link>
+            </div>
           }
         />
       </div>
@@ -44,9 +58,16 @@ export default function HouseholdsListPage() {
         title="Households"
         subtitle={`${households.length} household${households.length === 1 ? "" : "s"} saved on this device.`}
         action={
-          <Link href="/app/new">
-            <Button variant="primary">New household</Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {!households.some((h) => h.id === "hh_demo_sharma") ? (
+              <Button variant="ghost" onClick={handleLoadDemo}>
+                Load demo
+              </Button>
+            ) : null}
+            <Link href="/app/new">
+              <Button variant="primary">New household</Button>
+            </Link>
+          </div>
         }
       />
 
